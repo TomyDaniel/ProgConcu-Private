@@ -46,12 +46,13 @@ public class LoggerSistema {
     }
 
     public void logMensaje(String mensaje) {
-         if (writer != null) {
-              String timestamp = dtf.format(LocalDateTime.now());
-              writer.println(timestamp + " - " + mensaje);
-         } else {
-             System.out.println("LOG (consola): " + mensaje); // Fallback a consola
-         }
+        if (writer != null) {
+             String timestamp = dtf.format(LocalDateTime.now());
+             writer.println(timestamp + " - " + mensaje);
+             writer.flush(); // Añadir flush explícito
+        } else {
+            System.out.println("LOG (consola): " + mensaje); // Fallback a consola
+        }
     }
 
 
@@ -83,8 +84,9 @@ public class LoggerSistema {
         logMensaje("Total Pedidos Procesados (Fallidos + Verificados): " + totalFinal);
         logMensaje("--- FIN INFORME ---");
 
-         if (writer != null) {
-             writer.close(); // Cerrar el archivo al final
-         }
+        if (writer != null) {
+            writer.flush(); // Añadir flush explícito antes de cerrar
+            writer.close();
+        }
     }
 }

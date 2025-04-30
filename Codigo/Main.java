@@ -20,9 +20,9 @@ public class Main {
 
     // Tiempos de demora base (ms) - AJUSTAR PARA OBTENER 15-30 SEGUNDOS
     private static final int DEMORA_BASE_PREPARADOR = 25; // Más rápido para generar carga
-    private static final int DEMORA_BASE_DESPACHADOR = 45;
-    private static final int DEMORA_BASE_ENTREGADOR = 35;
-    private static final int DEMORA_BASE_VERIFICADOR = 55; // Potencial cuello de botella
+    private static final int DEMORA_BASE_DESPACHADOR = 65;
+    private static final int DEMORA_BASE_ENTREGADOR = 45;
+    private static final int DEMORA_BASE_VERIFICADOR = 75; // Potencial cuello de botella
 
     // Variación aleatoria de la demora (+/- ms)
     private static final int VARIACION_DEMORA = 10;
