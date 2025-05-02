@@ -22,11 +22,8 @@ public class EntregadorPedido implements Runnable {
     public void run() {
          System.out.println(Thread.currentThread().getName() + " iniciado.");
          try {
-            // isEmpty() es más eficiente que size()
             while (running.get() || !registro.pedidosEnTransito.isEmpty()) {
-                 // *** CAMBIO PRINCIPAL: Usar selección aleatoria ***
-                Pedido pedido = registro.tomarDeTransitoAleatorio();
-
+                Pedido pedido = registro.tomarDeTransito();
                 if (pedido != null) {
                     pedido.lock();
                     try {
@@ -43,8 +40,7 @@ public class EntregadorPedido implements Runnable {
                     }
                     dormir();
                 } else if (running.get()){
-                     // Si no hay pedidos y la simulación sigue, esperar un poco más
-                     Thread.sleep(30); // Espera aumentada
+                     Thread.sleep(20);
                 }
             }
         } catch (InterruptedException e) {

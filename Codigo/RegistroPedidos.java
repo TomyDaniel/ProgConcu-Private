@@ -1,28 +1,33 @@
 // RegistroPedidos.java
 import java.util.concurrent.ConcurrentLinkedQueue;
 import java.util.concurrent.atomic.AtomicInteger;
+import java.util.concurrent.locks.ReentrantLock; // Necesario para la selección aleatoria
 import java.util.List;
 import java.util.ArrayList;
-import java.util.Collections;
+import java.util.Collections; // Para shuffle o random index
 import java.util.Random;
 
 public class RegistroPedidos {
-    // Usamos colas concurrentes para operaciones eficientes y seguras de añadir/quitar
+    // Colas concurrentes
     final ConcurrentLinkedQueue<Pedido> pedidosEnPreparacion = new ConcurrentLinkedQueue<>();
     final ConcurrentLinkedQueue<Pedido> pedidosEnTransito = new ConcurrentLinkedQueue<>();
     final ConcurrentLinkedQueue<Pedido> pedidosEntregados = new ConcurrentLinkedQueue<>();
-    // Para los finales, podemos usar colas o listas sincronizadas si necesitamos más operaciones
     final ConcurrentLinkedQueue<Pedido> pedidosFallidos = new ConcurrentLinkedQueue<>();
     final ConcurrentLinkedQueue<Pedido> pedidosVerificados = new ConcurrentLinkedQueue<>();
 
-    // Contadores atómicos para estadísticas rápidas y seguras
+    // Contadores atómicos
     final AtomicInteger fallidosCount = new AtomicInteger(0);
     final AtomicInteger verificadosCount = new AtomicInteger(0);
-    final AtomicInteger preparadosCount = new AtomicInteger(0); // Para saber cuándo parar de generar
+    final AtomicInteger preparadosCount = new AtomicInteger(0);
 
     private final Random random = new Random();
 
-    // Métodos para añadir (seguros por ConcurrentLinkedQueue)
+    // --- Locks para selección aleatoria ---
+    private final ReentrantLock preparacionLock = new ReentrantLock();
+    private final ReentrantLock transitoLock = new ReentrantLock();
+    private final ReentrantLock entregadosLock = new ReentrantLock();
+
+    // Métodos para añadir (no necesitan lock externo)
     public void agregarAPreparacion(Pedido p) { pedidosEnPreparacion.offer(p); }
     public void agregarATransito(Pedido p) { pedidosEnTransito.offer(p); }
     public void agregarAEntregados(Pedido p) { pedidosEntregados.offer(p); }
@@ -35,21 +40,119 @@ public class RegistroPedidos {
         verificadosCount.incrementAndGet();
     }
 
-    // Métodos para tomar un pedido (poll es seguro y atómico)
-    // La especificación dice "aleatorio", pero poll() toma del inicio.
-    // Para aleatorio real necesitaríamos convertir a lista, seleccionar y quitar,
-    // lo cual es más complejo y requiere bloqueo externo. Usaremos poll() por eficiencia.
-    // Si se requiere aleatorio estricto, habría que cambiar la estructura.
-    public Pedido tomarDePreparacion() { return pedidosEnPreparacion.poll(); }
-    public Pedido tomarDeTransito() { return pedidosEnTransito.poll(); }
-    public Pedido tomarDeEntregados() { return pedidosEntregados.poll(); }
+    // --- Métodos para TOMAR ALEATORIAMENTE (CORREGIDOS) ---
 
-    // Métodos para obtener contadores (seguros por AtomicInteger)
+    /**
+     * Toma un pedido aleatorio de la cola de preparación.
+     * Reemplaza drainTo con un bucle poll().
+     * @return Un pedido aleatorio, o null si la cola está vacía.
+     */
+    public Pedido tomarDePreparacionAleatorio() {
+        preparacionLock.lock();
+        try {
+            List<Pedido> tempList = new ArrayList<>();
+            // *** CORRECCIÓN: Usar bucle poll() en lugar de drainTo ***
+            while (true) {
+                Pedido item = pedidosEnPreparacion.poll();
+                if (item == null) {
+                    break; // La cola está vacía
+                }
+                tempList.add(item);
+            }
+            // *** FIN CORRECCIÓN ***
+
+            if (tempList.isEmpty()) {
+                return null;
+            }
+
+            int randomIndex = random.nextInt(tempList.size());
+            Pedido pedidoSeleccionado = tempList.remove(randomIndex);
+
+            // Volver a añadir los elementos restantes a la cola concurrente
+            // addAll es seguro aquí porque la cola fue vaciada bajo lock
+            pedidosEnPreparacion.addAll(tempList);
+
+            return pedidoSeleccionado;
+
+        } finally {
+            preparacionLock.unlock();
+        }
+    }
+
+    /**
+     * Toma un pedido aleatorio de la cola de tránsito.
+     * Reemplaza drainTo con un bucle poll().
+     * @return Un pedido aleatorio, o null si la cola está vacía.
+     */
+    public Pedido tomarDeTransitoAleatorio() {
+        transitoLock.lock();
+        try {
+            List<Pedido> tempList = new ArrayList<>();
+            // *** CORRECCIÓN: Usar bucle poll() en lugar de drainTo ***
+             while (true) {
+                Pedido item = pedidosEnTransito.poll();
+                if (item == null) {
+                    break;
+                }
+                tempList.add(item);
+            }
+            // *** FIN CORRECCIÓN ***
+
+
+            if (tempList.isEmpty()) {
+                return null;
+            }
+
+            int randomIndex = random.nextInt(tempList.size());
+            Pedido pedidoSeleccionado = tempList.remove(randomIndex);
+            pedidosEnTransito.addAll(tempList); // Re-agregar los restantes
+
+            return pedidoSeleccionado;
+        } finally {
+            transitoLock.unlock();
+        }
+    }
+
+    /**
+     * Toma un pedido aleatorio de la cola de entregados.
+     * Reemplaza drainTo con un bucle poll().
+     * @return Un pedido aleatorio, o null si la cola está vacía.
+     */
+    public Pedido tomarDeEntregadosAleatorio() {
+        entregadosLock.lock();
+        try {
+            List<Pedido> tempList = new ArrayList<>();
+            // *** CORRECCIÓN: Usar bucle poll() en lugar de drainTo ***
+            while (true) {
+                Pedido item = pedidosEntregados.poll();
+                if (item == null) {
+                    break;
+                }
+                tempList.add(item);
+            }
+             // *** FIN CORRECCIÓN ***
+
+
+            if (tempList.isEmpty()) {
+                return null;
+            }
+
+            int randomIndex = random.nextInt(tempList.size());
+            Pedido pedidoSeleccionado = tempList.remove(randomIndex);
+            pedidosEntregados.addAll(tempList); // Re-agregar los restantes
+
+            return pedidoSeleccionado;
+        } finally {
+            entregadosLock.unlock();
+        }
+    }
+
+    // Métodos para obtener contadores
     public int getCantidadFallidos() { return fallidosCount.get(); }
     public int getCantidadVerificados() { return verificadosCount.get(); }
-    public int getCantidadEnPreparacion() { return pedidosEnPreparacion.size(); } // Size puede no ser O(1)
-    public int getCantidadEnTransito() { return pedidosEnTransito.size(); }
-    public int getCantidadEntregados() { return pedidosEntregados.size(); }
+    public int getCantidadEnPreparacion() { return pedidosEnPreparacion.size(); } // O(N)
+    public int getCantidadEnTransito() { return pedidosEnTransito.size(); } // O(N)
+    public int getCantidadEntregados() { return pedidosEntregados.size(); } // O(N)
 
     // Control de generación
     public int incrementarPreparados() { return preparadosCount.incrementAndGet(); }
@@ -57,6 +160,7 @@ public class RegistroPedidos {
 
      // Verifica si todas las colas de procesamiento están vacías
     public boolean todasLasColasProcesamientoVacias() {
+        // isEmpty() es preferible a size() == 0 para rendimiento O(1)
         return pedidosEnPreparacion.isEmpty() &&
                pedidosEnTransito.isEmpty() &&
                pedidosEntregados.isEmpty();

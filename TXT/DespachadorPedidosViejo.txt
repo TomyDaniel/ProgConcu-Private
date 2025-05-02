@@ -25,26 +25,14 @@ public class DespachadorPedido implements Runnable {
          System.out.println(Thread.currentThread().getName() + " iniciado.");
         try {
             // Continuar mientras esté corriendo o haya pedidos por procesar en la cola anterior
-            // isEmpty() es más eficiente que size() para ConcurrentLinkedQueue
             while (running.get() || !registro.pedidosEnPreparacion.isEmpty()) {
-                // *** CAMBIO PRINCIPAL: Usar selección aleatoria ***
-                Pedido pedido = registro.tomarDePreparacionAleatorio();
-
+                Pedido pedido = registro.tomarDePreparacion();
                 if (pedido != null) {
                     // Bloquear el pedido específico
                     pedido.lock();
                     try {
                         boolean exito = random.nextDouble() < probExito;
                         int casilleroId = pedido.getCasilleroIdAsignado();
-
-                        // Asegurarse de que el casillero ID es válido antes de usarlo
-                        if (casilleroId < 0) {
-                             System.err.println(Thread.currentThread().getName() + " encontró Pedido " + pedido.getId() + " sin casillero asignado en Despacho!");
-                             // Decide qué hacer: marcar como fallido, reintentar? Aquí lo marcaremos fallido.
-                             registro.agregarAFallidos(pedido);
-                             continue; // Saltar al siguiente ciclo del while
-                        }
-
 
                         if (exito) {
                             // Éxito: Liberar casillero, mover a tránsito
@@ -64,9 +52,8 @@ public class DespachadorPedido implements Runnable {
                     }
                     dormir(); // Dormir después de procesar un pedido
                 } else if (running.get()) {
-                    // Si no hay pedidos y la simulación sigue, esperar un poco más
-                    // debido al posible costo/contención de la selección aleatoria.
-                    Thread.sleep(30); // Espera aumentada
+                    // Si no hay pedidos y la simulación sigue, esperar un poco
+                    Thread.sleep(20);
                 }
                  // Si !running.get() y la cola está vacía, el bucle terminará
             }
