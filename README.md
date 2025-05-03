@@ -22,7 +22,7 @@ Este proyecto implementa una simulación de un sistema de procesamiento logísti
 
 1.  **Navega al directorio del código:**
     ```bash
-    cd ProgConcu-Mio/Codigo
+    cd ProgConcuTest/Codigo
     ```
 
 2.  **Compila los archivos Java:**
