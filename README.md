@@ -36,7 +36,7 @@ Este proyecto implementa una simulación de un sistema de procesamiento logísti
     java Main
     ```
 
-4.  **Observa la salida:** La consola mostrará mensajes de inicio y fin, y posiblemente algunos mensajes de estado. El registro detallado se escribirá en el archivo `../simulacion_logistica.log` (en el directorio raíz `ProgConcu-Mio`).
+4.  **Observa la salida:** La consola mostrará mensajes de inicio y fin, y posiblemente algunos mensajes de estado. El registro detallado se escribirá en el archivo `../simulacion_logistica.log`.
 
 ## Configuración
 
