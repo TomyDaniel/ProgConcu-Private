@@ -5,6 +5,11 @@ ProgConcu-Mio/
   |-- README.md
   |-- generate_sumary.py
   |-- simulacion_logistica.log
+TXT/
+  |-- DespachadorPedidosViejo.txt
+  |-- EntregadorPedidoViejo.txt
+  |-- RegistroPedidosViejo.txt
+  |-- VerificadorPedidosViejo.txt
 Codigo/
   |-- Casillero.java
   |-- DespachadorPedido.java
@@ -19,8 +24,8 @@ Codigo/
   |-- VerificadorPedido.java
 Graficos/
   |-- Diagramas/
-    |-- DiagramaDeClases.mmd
-    |-- diagramaDeSequencia.mmd
+    |-- DiagramaDeClases.md
+    |-- diagramaDeSequencia.md
 ```
 
 ---
@@ -183,7 +188,9 @@ except Exception as e:
 
 ### `simulacion_logistica.log`
 
-*Archivo vacío.*
+*No se pudo leer el archivo (error de codificación). Podría ser un binario.*
+
+---
 
 ### `Codigo/Casillero.java`
 
@@ -265,14 +272,26 @@ public class DespachadorPedido implements Runnable {
          System.out.println(Thread.currentThread().getName() + " iniciado.");
         try {
             // Continuar mientras esté corriendo o haya pedidos por procesar en la cola anterior
+            // isEmpty() es más eficiente que size() para ConcurrentLinkedQueue
             while (running.get() || !registro.pedidosEnPreparacion.isEmpty()) {
-                Pedido pedido = registro.tomarDePreparacion();
+                // *** CAMBIO PRINCIPAL: Usar selección aleatoria ***
+                Pedido pedido = registro.tomarDePreparacionAleatorio();
+
                 if (pedido != null) {
                     // Bloquear el pedido específico
                     pedido.lock();
                     try {
                         boolean exito = random.nextDouble() < probExito;
                         int casilleroId = pedido.getCasilleroIdAsignado();
+
+                        // Asegurarse de que el casillero ID es válido antes de usarlo
+                        if (casilleroId < 0) {
+                             System.err.println(Thread.currentThread().getName() + " encontró Pedido " + pedido.getId() + " sin casillero asignado en Despacho!");
+                             // Decide qué hacer: marcar como fallido, reintentar? Aquí lo marcaremos fallido.
+                             registro.agregarAFallidos(pedido);
+                             continue; // Saltar al siguiente ciclo del while
+                        }
+
 
                         if (exito) {
                             // Éxito: Liberar casillero, mover a tránsito
@@ -292,8 +311,9 @@ public class DespachadorPedido implements Runnable {
                     }
                     dormir(); // Dormir después de procesar un pedido
                 } else if (running.get()) {
-                    // Si no hay pedidos y la simulación sigue, esperar un poco
-                    Thread.sleep(20);
+                    // Si no hay pedidos y la simulación sigue, esperar un poco más
+                    // debido al posible costo/contención de la selección aleatoria.
+                    Thread.sleep(30); // Espera aumentada
                 }
                  // Si !running.get() y la cola está vacía, el bucle terminará
             }
@@ -340,8 +360,11 @@ public class EntregadorPedido implements Runnable {
     public void run() {
          System.out.println(Thread.currentThread().getName() + " iniciado.");
          try {
+            // isEmpty() es más eficiente que size()
             while (running.get() || !registro.pedidosEnTransito.isEmpty()) {
-                Pedido pedido = registro.tomarDeTransito();
+                 // *** CAMBIO PRINCIPAL: Usar selección aleatoria ***
+                Pedido pedido = registro.tomarDeTransitoAleatorio();
+
                 if (pedido != null) {
                     pedido.lock();
                     try {
@@ -358,7 +381,8 @@ public class EntregadorPedido implements Runnable {
                     }
                     dormir();
                 } else if (running.get()){
-                     Thread.sleep(20);
+                     // Si no hay pedidos y la simulación sigue, esperar un poco más
+                     Thread.sleep(30); // Espera aumentada
                 }
             }
         } catch (InterruptedException e) {
@@ -440,12 +464,13 @@ public class LoggerSistema {
     }
 
     public void logMensaje(String mensaje) {
-         if (writer != null) {
-              String timestamp = dtf.format(LocalDateTime.now());
-              writer.println(timestamp + " - " + mensaje);
-         } else {
-             System.out.println("LOG (consola): " + mensaje); // Fallback a consola
-         }
+        if (writer != null) {
+             String timestamp = dtf.format(LocalDateTime.now());
+             writer.println(timestamp + " - " + mensaje);
+             writer.flush(); // Añadir flush explícito
+        } else {
+            System.out.println("LOG (consola): " + mensaje); // Fallback a consola
+        }
     }
 
 
@@ -477,9 +502,10 @@ public class LoggerSistema {
         logMensaje("Total Pedidos Procesados (Fallidos + Verificados): " + totalFinal);
         logMensaje("--- FIN INFORME ---");
 
-         if (writer != null) {
-             writer.close(); // Cerrar el archivo al final
-         }
+        if (writer != null) {
+            writer.flush(); // Añadir flush explícito antes de cerrar
+            writer.close();
+        }
     }
 }
 
@@ -512,9 +538,9 @@ public class Main {
 
     // Tiempos de demora base (ms) - AJUSTAR PARA OBTENER 15-30 SEGUNDOS
     private static final int DEMORA_BASE_PREPARADOR = 25; // Más rápido para generar carga
-    private static final int DEMORA_BASE_DESPACHADOR = 45;
-    private static final int DEMORA_BASE_ENTREGADOR = 35;
-    private static final int DEMORA_BASE_VERIFICADOR = 55; // Potencial cuello de botella
+    private static final int DEMORA_BASE_DESPACHADOR = 65;
+    private static final int DEMORA_BASE_ENTREGADOR = 45;
+    private static final int DEMORA_BASE_VERIFICADOR = 75; // Potencial cuello de botella
 
     // Variación aleatoria de la demora (+/- ms)
     private static final int VARIACION_DEMORA = 10;
@@ -872,28 +898,33 @@ public class PreparadorPedido implements Runnable {
 // RegistroPedidos.java
 import java.util.concurrent.ConcurrentLinkedQueue;
 import java.util.concurrent.atomic.AtomicInteger;
+import java.util.concurrent.locks.ReentrantLock; // Necesario para la selección aleatoria
 import java.util.List;
 import java.util.ArrayList;
-import java.util.Collections;
+import java.util.Collections; // Para shuffle o random index
 import java.util.Random;
 
 public class RegistroPedidos {
-    // Usamos colas concurrentes para operaciones eficientes y seguras de añadir/quitar
+    // Colas concurrentes
     final ConcurrentLinkedQueue<Pedido> pedidosEnPreparacion = new ConcurrentLinkedQueue<>();
     final ConcurrentLinkedQueue<Pedido> pedidosEnTransito = new ConcurrentLinkedQueue<>();
     final ConcurrentLinkedQueue<Pedido> pedidosEntregados = new ConcurrentLinkedQueue<>();
-    // Para los finales, podemos usar colas o listas sincronizadas si necesitamos más operaciones
     final ConcurrentLinkedQueue<Pedido> pedidosFallidos = new ConcurrentLinkedQueue<>();
     final ConcurrentLinkedQueue<Pedido> pedidosVerificados = new ConcurrentLinkedQueue<>();
 
-    // Contadores atómicos para estadísticas rápidas y seguras
+    // Contadores atómicos
     final AtomicInteger fallidosCount = new AtomicInteger(0);
     final AtomicInteger verificadosCount = new AtomicInteger(0);
-    final AtomicInteger preparadosCount = new AtomicInteger(0); // Para saber cuándo parar de generar
+    final AtomicInteger preparadosCount = new AtomicInteger(0);
 
     private final Random random = new Random();
 
-    // Métodos para añadir (seguros por ConcurrentLinkedQueue)
+    // --- Locks para selección aleatoria ---
+    private final ReentrantLock preparacionLock = new ReentrantLock();
+    private final ReentrantLock transitoLock = new ReentrantLock();
+    private final ReentrantLock entregadosLock = new ReentrantLock();
+
+    // Métodos para añadir (no necesitan lock externo)
     public void agregarAPreparacion(Pedido p) { pedidosEnPreparacion.offer(p); }
     public void agregarATransito(Pedido p) { pedidosEnTransito.offer(p); }
     public void agregarAEntregados(Pedido p) { pedidosEntregados.offer(p); }
@@ -906,21 +937,119 @@ public class RegistroPedidos {
         verificadosCount.incrementAndGet();
     }
 
-    // Métodos para tomar un pedido (poll es seguro y atómico)
-    // La especificación dice "aleatorio", pero poll() toma del inicio.
-    // Para aleatorio real necesitaríamos convertir a lista, seleccionar y quitar,
-    // lo cual es más complejo y requiere bloqueo externo. Usaremos poll() por eficiencia.
-    // Si se requiere aleatorio estricto, habría que cambiar la estructura.
-    public Pedido tomarDePreparacion() { return pedidosEnPreparacion.poll(); }
-    public Pedido tomarDeTransito() { return pedidosEnTransito.poll(); }
-    public Pedido tomarDeEntregados() { return pedidosEntregados.poll(); }
+    // --- Métodos para TOMAR ALEATORIAMENTE (CORREGIDOS) ---
 
-    // Métodos para obtener contadores (seguros por AtomicInteger)
+    /**
+     * Toma un pedido aleatorio de la cola de preparación.
+     * Reemplaza drainTo con un bucle poll().
+     * @return Un pedido aleatorio, o null si la cola está vacía.
+     */
+    public Pedido tomarDePreparacionAleatorio() {
+        preparacionLock.lock();
+        try {
+            List<Pedido> tempList = new ArrayList<>();
+            // *** CORRECCIÓN: Usar bucle poll() en lugar de drainTo ***
+            while (true) {
+                Pedido item = pedidosEnPreparacion.poll();
+                if (item == null) {
+                    break; // La cola está vacía
+                }
+                tempList.add(item);
+            }
+            // *** FIN CORRECCIÓN ***
+
+            if (tempList.isEmpty()) {
+                return null;
+            }
+
+            int randomIndex = random.nextInt(tempList.size());
+            Pedido pedidoSeleccionado = tempList.remove(randomIndex);
+
+            // Volver a añadir los elementos restantes a la cola concurrente
+            // addAll es seguro aquí porque la cola fue vaciada bajo lock
+            pedidosEnPreparacion.addAll(tempList);
+
+            return pedidoSeleccionado;
+
+        } finally {
+            preparacionLock.unlock();
+        }
+    }
+
+    /**
+     * Toma un pedido aleatorio de la cola de tránsito.
+     * Reemplaza drainTo con un bucle poll().
+     * @return Un pedido aleatorio, o null si la cola está vacía.
+     */
+    public Pedido tomarDeTransitoAleatorio() {
+        transitoLock.lock();
+        try {
+            List<Pedido> tempList = new ArrayList<>();
+            // *** CORRECCIÓN: Usar bucle poll() en lugar de drainTo ***
+             while (true) {
+                Pedido item = pedidosEnTransito.poll();
+                if (item == null) {
+                    break;
+                }
+                tempList.add(item);
+            }
+            // *** FIN CORRECCIÓN ***
+
+
+            if (tempList.isEmpty()) {
+                return null;
+            }
+
+            int randomIndex = random.nextInt(tempList.size());
+            Pedido pedidoSeleccionado = tempList.remove(randomIndex);
+            pedidosEnTransito.addAll(tempList); // Re-agregar los restantes
+
+            return pedidoSeleccionado;
+        } finally {
+            transitoLock.unlock();
+        }
+    }
+
+    /**
+     * Toma un pedido aleatorio de la cola de entregados.
+     * Reemplaza drainTo con un bucle poll().
+     * @return Un pedido aleatorio, o null si la cola está vacía.
+     */
+    public Pedido tomarDeEntregadosAleatorio() {
+        entregadosLock.lock();
+        try {
+            List<Pedido> tempList = new ArrayList<>();
+            // *** CORRECCIÓN: Usar bucle poll() en lugar de drainTo ***
+            while (true) {
+                Pedido item = pedidosEntregados.poll();
+                if (item == null) {
+                    break;
+                }
+                tempList.add(item);
+            }
+             // *** FIN CORRECCIÓN ***
+
+
+            if (tempList.isEmpty()) {
+                return null;
+            }
+
+            int randomIndex = random.nextInt(tempList.size());
+            Pedido pedidoSeleccionado = tempList.remove(randomIndex);
+            pedidosEntregados.addAll(tempList); // Re-agregar los restantes
+
+            return pedidoSeleccionado;
+        } finally {
+            entregadosLock.unlock();
+        }
+    }
+
+    // Métodos para obtener contadores
     public int getCantidadFallidos() { return fallidosCount.get(); }
     public int getCantidadVerificados() { return verificadosCount.get(); }
-    public int getCantidadEnPreparacion() { return pedidosEnPreparacion.size(); } // Size puede no ser O(1)
-    public int getCantidadEnTransito() { return pedidosEnTransito.size(); }
-    public int getCantidadEntregados() { return pedidosEntregados.size(); }
+    public int getCantidadEnPreparacion() { return pedidosEnPreparacion.size(); } // O(N)
+    public int getCantidadEnTransito() { return pedidosEnTransito.size(); } // O(N)
+    public int getCantidadEntregados() { return pedidosEntregados.size(); } // O(N)
 
     // Control de generación
     public int incrementarPreparados() { return preparadosCount.incrementAndGet(); }
@@ -928,6 +1057,7 @@ public class RegistroPedidos {
 
      // Verifica si todas las colas de procesamiento están vacías
     public boolean todasLasColasProcesamientoVacias() {
+        // isEmpty() es preferible a size() == 0 para rendimiento O(1)
         return pedidosEnPreparacion.isEmpty() &&
                pedidosEnTransito.isEmpty() &&
                pedidosEntregados.isEmpty();
@@ -964,8 +1094,11 @@ public class VerificadorPedido implements Runnable {
     public void run() {
         System.out.println(Thread.currentThread().getName() + " iniciado.");
         try {
+             // isEmpty() es más eficiente que size()
              while (running.get() || !registro.pedidosEntregados.isEmpty()) {
-                Pedido pedido = registro.tomarDeEntregados();
+                 // *** CAMBIO PRINCIPAL: Usar selección aleatoria ***
+                Pedido pedido = registro.tomarDeEntregadosAleatorio();
+
                 if (pedido != null) {
                     pedido.lock();
                     try {
@@ -982,7 +1115,8 @@ public class VerificadorPedido implements Runnable {
                     }
                     dormir();
                 } else if (running.get()){
-                     Thread.sleep(20);
+                     // Si no hay pedidos y la simulación sigue, esperar un poco más
+                     Thread.sleep(30); // Espera aumentada
                 }
             }
         } catch (InterruptedException e) {
@@ -997,272 +1131,6 @@ public class VerificadorPedido implements Runnable {
         Thread.sleep(Math.max(0, demora));
     }
 }
-
-```
-
----
-
-### `Graficos/Diagramas/DiagramaDeClases.mmd`
-
-```markdown
-```mermaid
-classDiagram
-    class SistemaLogistica {
-        +MatrizCasilleros matriz
-        +RegistroPedidos registros
-        +List<Thread> hilosPreparadores
-        +List<Thread> hilosDespachadores
-        +List<Thread> hilosEntregadores
-        +List<Thread> hilosVerificadores
-        +Logger logger
-        +iniciarSimulacion()
-        +detenerSimulacion()
-        +generarReporteFinal()
-    }
-
-    class MatrizCasilleros {
-        -Casillero[][] casilleros
-        -Lock lockMatriz  // Lock general o por filas/columnas
-        +buscarCasilleroVacio() Casillero
-        +getCasillero(int fila, int col) Casillero
-        +actualizarEstadoCasillero(Casillero c, EstadoCasillero estado)
-        +getEstadisticasCasilleros() String
-    }
-
-    class Casillero {
-        -int id  // o posicion (fila, col)
-        -EstadoCasillero estado
-        -int contadorUso
-        -Lock lockCasillero // Lock individual
-        +ocupar()
-        +liberar()
-        +ponerFueraDeServicio()
-        +getEstado() EstadoCasillero
-        +incrementarContador()
-        +getId() int
-    }
-
-    class RegistroPedidos {
-        -List<Pedido> pedidosEnPreparacion
-        -List<Pedido> pedidosEnTransito
-        -List<Pedido> pedidosEntregados
-        -List<Pedido> pedidosFallidos
-        -List<Pedido> pedidosVerificados
-        -Lock lockPreparacion
-        -Lock lockTransito
-        -Lock lockEntregados
-        -Lock lockFallidos
-        -Lock lockVerificados
-        +agregarAPreparacion(Pedido p)
-        +tomarDePreparacion() Pedido
-        +agregarATransito(Pedido p)
-        +tomarDeTransito() Pedido
-        +agregarAEntregados(Pedido p)
-        +tomarDeEntregados() Pedido
-        +agregarAFallidos(Pedido p)
-        +agregarAVerificados(Pedido p)
-        +getCantidadFallidos() int
-        +getCantidadVerificados() int
-    }
-
-    class Pedido {
-        -int id
-        -EstadoPedido estadoActual // Opcional, manejado por listas
-        -Casillero casilleroAsignado // Referencia mientras está en preparación
-        -Lock lockPedido // Para asegurar que solo un hilo lo procese a la vez
-        +getId() int
-        +asignarCasillero(Casillero c)
-        +getCasilleroAsignado() Casillero
-        +liberarCasillero()
-    }
-
-    class ProcesoBase {
-        <<Abstract>>
-        #String nombre
-        #RegistroPedidos registroPedidos
-        #MatrizCasilleros matrizCasilleros // Si es necesario
-        #int demoraBaseMs
-        +run() void
-        #dormir() void // Simula demora aleatoria/fija
-    }
-
-    class PreparadorPedido {
-        +PreparadorPedido(RegistroPedidos reg, MatrizCasilleros mat, int demora)
-        +run() void // Lógica de preparación
-    }
-
-    class DespachadorPedido {
-        +DespachadorPedido(RegistroPedidos reg, MatrizCasilleros mat, int demora)
-        +run() void // Lógica de despacho
-    }
-
-    class EntregadorPedido {
-        +EntregadorPedido(RegistroPedidos reg, int demora)
-        +run() void // Lógica de entrega
-    }
-
-    class VerificadorPedido {
-        +VerificadorPedido(RegistroPedidos reg, int demora)
-        +run() void // Lógica de verificación
-    }
-
-    class Logger {
-        -String archivoLog
-        -RegistroPedidos registroPedidos
-        -Timer timerLogPeriodico
-        +iniciarLogPeriodico(long intervaloMs)
-        +detenerLogPeriodico()
-        +logEstadoActual()
-        +logFinal(MatrizCasilleros mat, long tiempoTotalMs)
-        -escribirArchivo(String mensaje)
-    }
-
-    class EstadoCasillero {
-        <<enumeration>>
-        VACIO
-        OCUPADO
-        FUERA_DE_SERVICIO
-    }
-
-    class EstadoPedido {
-        <<enumeration>>
-        EN_PREPARACION
-        EN_TRANSITO
-        ENTREGADO
-        FALLIDO
-        VERIFICADO
-    }
-
-    SistemaLogistica "1" *-- "1" MatrizCasilleros : contiene >
-    SistemaLogistica "1" *-- "1" RegistroPedidos : contiene >
-    SistemaLogistica "1" *-- "1" Logger : usa >
-    SistemaLogistica "1" *-- "3..*" PreparadorPedido : gestiona >
-    SistemaLogistica "1" *-- "2" DespachadorPedido : gestiona >
-    SistemaLogistica "1" *-- "3" EntregadorPedido : gestiona >
-    SistemaLogistica "1" *-- "2" VerificadorPedido : gestiona >
-
-    MatrizCasilleros "1" *-- "N" Casillero : contiene >
-
-    RegistroPedidos "1" *-- "*" Pedido : gestiona >
-
-    PreparadorPedido --|> ProcesoBase
-    DespachadorPedido --|> ProcesoBase
-    EntregadorPedido --|> ProcesoBase
-    VerificadorPedido --|> ProcesoBase
-
-    ProcesoBase "1" *-- "1" RegistroPedidos : usa >
-    PreparadorPedido "1" *-- "1" MatrizCasilleros : usa >
-    DespachadorPedido "1" *-- "1" MatrizCasilleros : usa >
-
-    Pedido "1" -- "0..1" Casillero : ocupa >
-
-    Casillero -- EstadoCasillero
-
-    Logger "1" *-- "1" RegistroPedidos : monitorea >
-
-```
-```
-
----
-
-### `Graficos/Diagramas/diagramaDeSequencia.mmd`
-
-```markdown
-```mermaid
-sequenceDiagram
-    participant User as Usuario (Externo)
-    participant Prep1 as HiloPreparador_1
-    participant Matriz as MatrizCasilleros
-    participant Cas1 as Casillero_X
-    participant RegP as RegistroPedidos
-    participant Pedido1 as Pedido_A
-    participant Desp1 as HiloDespachador_1
-
-    Note over User, Desp1: Sistema iniciado, hilos en ejecución.
-
-    User ->> Prep1: (Implícito) Nuevo pedido generado/disponible
-
-    Note over Prep1: Intenta encontrar y ocupar un casillero (puede reintentar si falla)
-
-    Prep1 ->> Matriz: lock() // Bloqueo para buscar
-    Prep1 ->> Matriz: buscarCasilleroVacio()
-    Matriz -->> Prep1: casilleroEncontrado(Cas1) // Asumiendo que se encontró uno
-    Prep1 ->> Matriz: unlock() // Desbloqueo post-búsqueda
-
-    Prep1 ->> Cas1: lock() // Bloqueo del casillero específico
-    alt Casillero [Cas1] aún vacío?
-        Prep1 ->> Cas1: ocupar()
-        Prep1 ->> Cas1: incrementarContador()
-        Prep1 ->> Cas1: unlock()
-        Note over Prep1: Casillero encontrado y ocupado con éxito
-
-        Prep1 ->> Pedido1: new Pedido(id_A)
-        Prep1 ->> Pedido1: asignarCasillero(Cas1)
-
-        Prep1 ->> RegP: lock(Preparacion) // Bloquear lista de preparación
-        Prep1 ->> RegP: agregarAPreparacion(Pedido1)
-        Prep1 ->> RegP: unlock(Preparacion)
-
-        Prep1 ->> Prep1: dormir() // Espera configurable
-
-    else Casillero [Cas1] ocupado por otro hilo
-        Prep1 ->> Cas1: unlock()
-        Note over Prep1: Conflicto, se debe buscar otro casillero (reintento no mostrado en detalle)
-    end
-
-    Note over Prep1, Desp1: Si el pedido A se creó, ahora está en preparación...
-
-   
-    Desp1 ->> RegP: lock(Preparacion) // Bloquear lista
-    Desp1 ->> RegP: tomarDePreparacion() // Selecciona Pedido_A
-    RegP -->> Desp1: Pedido1
-    Desp1 ->> RegP: unlock(Preparacion)
-
-    Desp1 ->> Pedido1: lock() // Bloquea el pedido para procesarlo
-
-    Desp1 ->> Desp1: verificarDatos() // Lógica interna
-    Note right of Desp1: Probabilidad 85% éxito, 15% fallo
-
-    alt Verificación Exitosa (85%)
-        Desp1 ->> Pedido1: getCasilleroAsignado()
-        Pedido1 -->> Desp1: Cas1
-
-        Desp1 ->> Cas1: lock() // Bloquear casillero para liberarlo
-        Desp1 ->> Cas1: liberar()
-        Desp1 ->> Cas1: unlock()
-
-        Desp1 ->> Pedido1: liberarCasillero() // Actualiza estado interno del pedido si es necesario
-
-        Desp1 ->> RegP: lock(Transito) // Bloquear lista de tránsito
-        Desp1 ->> RegP: agregarATransito(Pedido1)
-        Desp1 ->> RegP: unlock(Transito)
-
-        Note over Desp1, RegP: Pedido A movido a Tránsito
-
-    else Verificación Fallida (15%)
-        Desp1 ->> Pedido1: getCasilleroAsignado()
-        Pedido1 -->> Desp1: Cas1
-
-        Desp1 ->> Cas1: lock()
-        Desp1 ->> Cas1: ponerFueraDeServicio()
-        Desp1 ->> Cas1: unlock()
-
-        Desp1 ->> Pedido1: liberarCasillero()
-
-        Desp1 ->> RegP: lock(Fallidos) // Bloquear lista de fallidos
-        Desp1 ->> RegP: agregarAFallidos(Pedido1)
-        Desp1 ->> RegP: unlock(Fallidos)
-
-        Note over Desp1, RegP: Pedido A movido a Fallidos, Casillero X fuera de servicio
-    end
-
-    Desp1 ->> Pedido1: unlock() // Libera el bloqueo del pedido
-
-    Desp1 ->> Desp1: dormir() // Espera configurable
-
-    Note over User, Desp1: Continúa el ciclo para otros pedidos y etapas...
-
-``` 
 ```
 
 ---
