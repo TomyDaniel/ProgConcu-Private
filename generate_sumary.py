@@ -3,7 +3,7 @@ import fnmatch # Para patrones de archivos/directorios
 
 # --- Configuración ---
 OUTPUT_FILENAME = "project_summary.md"
-START_DIR = "."  # Directorio actual (asume que se ejecuta desde TP2/)
+START_DIR = "."  # Directorio actual
 
 # Extensiones de archivo cuyo contenido queremos incluir
 CONTENT_EXTENSIONS = {".py", ".c", ".h", ".asm", ".java", ".mmd", ".log"} 
