@@ -47,7 +47,9 @@ public class MatrizCasilleros {
                         matriz[fila][col].ocupar();
                         return pos;
                     }
-                } finally {
+                }
+                catch (IllegalStateException e) {}
+                finally {
                     // Downgrade de nuevo a read lock
                     readLock.lock();
                     writeLock.unlock();
@@ -67,7 +69,9 @@ public class MatrizCasilleros {
         writeLock.lock();
         try {
             matriz[fila][col].liberar();
-        } finally {
+        }
+        catch (IllegalStateException e) {}
+        finally {
             writeLock.unlock();
         }
     }
@@ -82,5 +86,40 @@ public class MatrizCasilleros {
         } finally {
             writeLock.unlock();
         }
+    }
+    public int getSizeFueraDeServicio() {
+        int size = 0;
+        for (int i = 0; i < filas; i++) {
+            for (int j = 0; j < columnas; j++) {
+                if (matriz[i][j].getEstado() == EstadoCasillero.FUERA_DE_SERVICIO) {
+                    size++;
+                }
+            }
+        }
+        return size;
+    }
+
+    public void verificarEstadoCritico() throws MatrizLlenaException{
+        readLock.lock();
+        try {
+            int contador = getSizeFueraDeServicio();
+            int limitePermitido = filas * columnas; // Puedes ajustar este umbral
+
+            if (contador >= limitePermitido) {
+                throw new MatrizLlenaException("Error: Se detectaron " + contador +
+                        " casilleros fuera de servicio de un total de " +
+                        (filas * columnas) + ". El sistema no puede continuar.");
+            }
+        } finally {
+            readLock.unlock();
+        }
+    }
+
+
+}
+
+class MatrizLlenaException extends RuntimeException {
+    public MatrizLlenaException(String mensaje) {
+        super(mensaje);
     }
 }

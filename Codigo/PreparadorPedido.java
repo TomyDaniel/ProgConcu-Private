@@ -15,8 +15,7 @@ public class PreparadorPedido implements Runnable {
     private final int variacionDemoraMs;
     private final int totalPedidosAGenerar;
 
-    public PreparadorPedido(RegistroPedidos registro, MatrizCasilleros matriz, int demoraBaseMs,
-                            int variacionDemoraMs, int totalPedidosAGenerar, AtomicBoolean running) {
+    public PreparadorPedido(RegistroPedidos registro, MatrizCasilleros matriz, int demoraBaseMs, int variacionDemoraMs, int totalPedidosAGenerar, AtomicBoolean running) {
         this.registro = registro;
         this.matriz = matriz;
         this.demoraBaseMs = demoraBaseMs;

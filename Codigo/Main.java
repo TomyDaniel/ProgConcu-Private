@@ -34,33 +34,28 @@ public class Main {
 
         // 3 hilos preparadores
         for (int i = 0; i < 3; i++) {
-            Thread hilo = new Thread(new PreparadorPedido(registro, matriz,
-                    DEMORA_PREPARADOR, VARIACION_DEMORA,
-                    TOTAL_PEDIDOS, running));
+            Thread hilo = new Thread(new PreparadorPedido(registro, matriz, DEMORA_PREPARADOR, VARIACION_DEMORA, TOTAL_PEDIDOS, running));
             hilo.setName("Preparador-" + i);
             hilos.add(hilo);
         }
 
         // 2 hilos despachadores
         for (int i = 0; i < 2; i++) {
-            Thread hilo = new Thread(new DespachadorPedido(registro, matriz,
-                    DEMORA_DESPACHADOR, VARIACION_DEMORA, running));
+            Thread hilo = new Thread(new DespachadorPedido(registro, matriz, DEMORA_DESPACHADOR, VARIACION_DEMORA, running));
             hilo.setName("Despachador-" + i);
             hilos.add(hilo);
         }
 
         // 3 hilos entregadores
         for (int i = 0; i < 3; i++) {
-            Thread hilo = new Thread(new EntregadorPedido(registro,
-                    DEMORA_ENTREGADOR, VARIACION_DEMORA, running));
+            Thread hilo = new Thread(new EntregadorPedido(registro, DEMORA_ENTREGADOR, VARIACION_DEMORA, running));
             hilo.setName("Entregador-" + i);
             hilos.add(hilo);
         }
 
         // 2 hilos verificadores
         for (int i = 0; i < 2; i++) {
-            Thread hilo = new Thread(new VerificadorPedido(registro,
-                    DEMORA_VERIFICADOR, VARIACION_DEMORA, running));
+            Thread hilo = new Thread(new VerificadorPedido(registro, DEMORA_VERIFICADOR, VARIACION_DEMORA, running));
             hilo.setName("Verificador-" + i);
             hilos.add(hilo);
         }
@@ -70,25 +65,29 @@ public class Main {
             hilo.start();
         }
 
-        // Monitor de progreso
+        // Progreso de los pedidos (solo para depurar)
         new Thread(() -> {
             try {
                 while (running.get()) {
                     imprimirEstadisticas(registro);
+                    System.out.println("Cantidad de fuera de servicio: " + matriz.getSizeFueraDeServicio());
+                    matriz.verificarEstadoCritico();
                     Thread.sleep(2000);
 
                     // Criterio de finalización: todos los pedidos procesados
-                    if (registro.getCantidadPreparados() >= TOTAL_PEDIDOS &&
-                            registro.getCantidadEnPreparacion() == 0 &&
+                    if (registro.getCantidadPreparados() >= TOTAL_PEDIDOS && registro.getCantidadEnPreparacion() == 0 &&
                             registro.getCantidadEnTransito() == 0 &&
-                            (registro.getCantidadEntregados() + registro.getCantidadVerificados() +
-                                    registro.getCantidadFallidos() >= TOTAL_PEDIDOS)) {
+                            (registro.getCantidadEntregados() + registro.getCantidadVerificados() + registro.getCantidadFallidos() >= TOTAL_PEDIDOS)) {
                         running.set(false);
                         System.out.println("Todos los pedidos procesados. Finalizando...");
                     }
                 }
             } catch (InterruptedException e) {
                 Thread.currentThread().interrupt();
+            }
+            catch (MatrizLlenaException e){
+                System.out.println("Programa finalizado: todos los casilleros fuera de servicio");
+                running.set(false);
             }
         }, "Monitor").start();
 
@@ -112,6 +111,7 @@ public class Main {
         System.out.println("Simulación completada.");
         logger.detenerLogPeriodico();
         logger.logFinal(matriz, durationMs);
+
     }
 
     private static void imprimirEstadisticas(RegistroPedidos registro) {
@@ -123,5 +123,6 @@ public class Main {
         System.out.println("Verificados: " + registro.getCantidadVerificados());
         System.out.println("Fallidos: " + registro.getCantidadFallidos());
         System.out.println("Total completados: " + (registro.getCantidadEntregados() + registro.getCantidadVerificados() + registro.getCantidadFallidos()));
+
     }
 }

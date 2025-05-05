@@ -9,7 +9,7 @@ public class Casillero {
         this.vecesOcupado = 0;
     }
 
-    public void ocupar() {
+    public void ocupar() throws IllegalStateException {
         if (estado != EstadoCasillero.VACIO) {
             throw new IllegalStateException("No se puede ocupar un casillero que no está vacío");
         }
@@ -17,7 +17,7 @@ public class Casillero {
         vecesOcupado++;
     }
 
-    public void liberar() {
+    public void liberar() throws IllegalStateException{
         if (estado != EstadoCasillero.OCUPADO) {
             throw new IllegalStateException("No se puede liberar un casillero que no está ocupado");
         }
