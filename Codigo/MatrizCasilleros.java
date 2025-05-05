@@ -1,161 +1,231 @@
-
-// --- Clases de Gestión de Recursos Compartidos ---
-// MatrizCasilleros.java
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Random;
 import java.util.concurrent.locks.ReentrantLock;
-import java.util.concurrent.atomic.AtomicInteger; // <--- IMPORTADO
-import java.util.stream.Collectors;
-
-// Asegúrate de que las otras clases necesarias estén accesibles
-// import Codigo.Casillero;
-// import Codigo.EstadoCasillero;
-
+// Asegúrate de tener también las clases Casillero, EstadoCasillero y NoAvailableLockersException
 
 public class MatrizCasilleros {
-    private final Casillero[] casilleros;
+    private final Casillero[][] casilleros; // Cambio a matriz 2D
+    private final int numRows;
+    private final int numCols;
     private final int totalCasilleros;
-    private final ReentrantLock matrizLock = new ReentrantLock(); // Lock para operaciones sobre la matriz/casilleros
-    private final Random random = new Random(); // Para selección aleatoria
+    private final ReentrantLock matrizLock = new ReentrantLock();
+    private final Random random = new Random();
 
-    // --- NUEVOS CAMPOS PARA EL LÍMITE ---
-    private final AtomicInteger fueraDeServicioCount = new AtomicInteger(0); // Contador thread-safe
-    private final int maxFueraDeServicio; // Límite máximo permitido
-    // --- FIN NUEVOS CAMPOS ---
-
-    public MatrizCasilleros(int numCasilleros) {
-        this.totalCasilleros = numCasilleros;
-        this.casilleros = new Casillero[numCasilleros];
-        for (int i = 0; i < numCasilleros; i++) {
-            casilleros[i] = new Casillero(i);
+    /**
+     * Constructor para una matriz de casilleros bidimensional.
+     * @param numRows Número de filas.
+     * @param numCols Número de columnas.
+     */
+    public MatrizCasilleros(int numRows, int numCols) {
+        if (numRows <= 0 || numCols <= 0) {
+            throw new IllegalArgumentException("El número de filas y columnas debe ser positivo.");
         }
-        // --- INICIALIZACIÓN DEL LÍMITE ---
-        // Calculamos el límite (ej: 50% del total, pero al menos 1)
-        this.maxFueraDeServicio = Math.max(1, numCasilleros / 2);
-        System.out.println("[MatrizCasilleros] Inicializada con " + numCasilleros + " casilleros.");
-        System.out.println("[MatrizCasilleros] Límite máximo de casilleros FueraDeServicio establecido en: " + this.maxFueraDeServicio);
-        // --- FIN INICIALIZACIÓN ---
+        this.numRows = numRows;
+        this.numCols = numCols;
+        this.totalCasilleros = numRows * numCols;
+        this.casilleros = new Casillero[numRows][numCols];
+
+        // Inicializar la matriz 2D con casilleros y IDs lineales
+        for (int r = 0; r < numRows; r++) {
+            for (int c = 0; c < numCols; c++) {
+                // Calculamos un ID único lineal (0 a totalCasilleros - 1)
+                int id = r * numCols + c;
+                casilleros[r][c] = new Casillero(id);
+            }
+        }
+        System.out.println("Matriz de casilleros creada: " + numRows + "x" + numCols + " (Total: " + totalCasilleros + ")");
     }
 
-    // Busca un casillero vacío aleatorio y lo ocupa. Devuelve el ID o -1 si no hay.
-    public int ocuparCasilleroAleatorio() {
+    /**
+     * Busca un casillero vacío aleatorio en la matriz 2D y lo ocupa.
+     * Devuelve el ID lineal del casillero ocupado o -1 si no hay vacíos temporalmente.
+     * Lanza NoAvailableLockersException si no quedan casilleros usables permanentemente.
+     * @return ID del casillero ocupado, -1 si no hay vacíos temporalmente.
+     * @throws NoAvailableLockersException Si todos los casilleros están FUERA_DE_SERVICIO.
+     */
+    public int ocuparCasilleroAleatorio() throws NoHayCasilleros {
         matrizLock.lock();
         try {
-            List<Integer> vacios = new ArrayList<>();
-            for (int i = 0; i < totalCasilleros; i++) {
-                if (casilleros[i].getEstado() == EstadoCasillero.VACIO) {
-                    vacios.add(i);
+            // Almacenamos las coordenadas (fila, columna) de los casilleros vacíos
+            List<int[]> vaciosCoords = new ArrayList<>();
+            boolean hayOcupados = false;
+
+            // Iterar sobre la matriz 2D
+            for (int r = 0; r < numRows; r++) {
+                for (int c = 0; c < numCols; c++) {
+                    EstadoCasillero estado = casilleros[r][c].getEstado();
+                    if (estado == EstadoCasillero.VACIO) {
+                        vaciosCoords.add(new int[]{r, c}); // Guardar [fila, columna]
+                    } else if (estado == EstadoCasillero.OCUPADO) {
+                        hayOcupados = true;
+                    }
+                    // Si es FUERA_DE_SERVICIO, no lo añadimos a vacíos
                 }
             }
 
-            if (vacios.isEmpty()) {
-                return -1; // No hay casilleros vacíos
-            }
-
-            int indiceAleatorio = random.nextInt(vacios.size());
-            int casilleroId = vacios.get(indiceAleatorio);
-            casilleros[casilleroId].ocupar();
-            //System.out.println(Thread.currentThread().getName() + " ocupó casillero " + casilleroId);
-            return casilleroId;
-        } finally {
-            matrizLock.unlock();
-        }
-    }
-
-    // Libera un casillero específico (SIN CAMBIOS)
-    public void liberarCasillero(int casilleroId) {
-        if (casilleroId < 0 || casilleroId >= totalCasilleros) return;
-        matrizLock.lock();
-        try {
-            // Solo liberar si está OCUPADO o FUERA_DE_SERVICIO (aunque FdS no debería pasar por aquí normalmente)
-            EstadoCasillero estadoActual = casilleros[casilleroId].getEstado();
-            if (estadoActual == EstadoCasillero.OCUPADO) {
-                 casilleros[casilleroId].liberar();
-                 //System.out.println("Casillero " + casilleroId + " liberado.");
-            } else if (estadoActual == EstadoCasillero.FUERA_DE_SERVICIO) {
-                // Opcional: Podrías decidir si 'liberar' también repara un FdS,
-                // pero la lógica actual asume que FdS es (casi) permanente.
-                // No hacemos nada aquí para mantener la consistencia con FdS.
-                 // System.out.println("Intento de liberar casillero " + casilleroId + " que está FdS. Ignorado.");
-            }
-        } finally {
-            matrizLock.unlock();
-        }
-    }
-
-    // Pone un casillero específico fuera de servicio, PERO CON LÍMITE
-    public void ponerFueraDeServicio(int casilleroId) {
-         if (casilleroId < 0 || casilleroId >= totalCasilleros) return;
-        matrizLock.lock(); // Asegura exclusión mutua para leer contador y estado
-        try {
-            // Verificar si el casillero está realmente en un estado desde el cual puede pasar a FdS (OCUPADO)
-            if (casilleros[casilleroId].getEstado() == EstadoCasillero.OCUPADO) {
-
-                // --- LÓGICA DEL LÍMITE ---
-                if (fueraDeServicioCount.get() < maxFueraDeServicio) {
-                    // Límite NO alcanzado: Marcar como FdS e incrementar contador
-                    casilleros[casilleroId].ponerFueraDeServicio();
-                    fueraDeServicioCount.incrementAndGet(); // Incremento atómico
-                    // System.out.println("Casillero " + casilleroId + " puesto fuera de servicio. Total FdS: " + fueraDeServicioCount.get());
+            if (vaciosCoords.isEmpty()) {
+                // No hay VACIOS
+                if (!hayOcupados) {
+                    // Si TAMPOCO hay OCUPADOS, todos están FUERA_DE_SERVICIO
+                    throw new NoHayCasilleros("¡Todos los casilleros ("+ totalCasilleros +") están Fuera de Servicio! No se pueden preparar más pedidos.");
                 } else {
-                    // Límite ALCANZADO: Liberar el casillero en lugar de marcarlo FdS
-                    casilleros[casilleroId].liberar(); // Lo hacemos VACIO para que pueda reutilizarse
-                    System.out.println("[MatrizCasilleros] Límite FdS (" + maxFueraDeServicio + ") alcanzado. Casillero " + casilleroId + " liberado en su lugar.");
+                    // No hay VACIOS ahora, pero podrían liberarse OCUPADOS
+                    return -1; // Fallo temporal
                 }
-                // --- FIN LÓGICA DEL LÍMITE ---
+            }
 
-            } else {
-                 // Si no estaba OCUPADO, no hacemos nada (ya está VACIO o FdS)
-                 // System.out.println("Intento de poner FdS casillero " + casilleroId + ", pero no estaba OCUPADO (estado=" + casilleros[casilleroId].getEstado() + "). Ignorando.");
+            // Seleccionar coordenadas aleatorias de un casillero vacío
+            int randomIndex = random.nextInt(vaciosCoords.size());
+            int[] selectedCoords = vaciosCoords.get(randomIndex);
+            int r = selectedCoords[0];
+            int c = selectedCoords[1];
+
+            // Ocupar el casillero en esas coordenadas
+            casilleros[r][c].ocupar();
+
+            // Devolver el ID lineal correspondiente a esas coordenadas
+            int casilleroId = r * numCols + c;
+            // System.out.println(Thread.currentThread().getName() + " ocupó casillero ID " + casilleroId + " en [" + r + "," + c + "]");
+            return casilleroId;
+
+        } finally {
+            matrizLock.unlock();
+        }
+    }
+
+    /**
+     * Libera un casillero específico usando su ID lineal.
+     * @param casilleroId El ID lineal del casillero a liberar.
+     */
+    public void liberarCasillero(int casilleroId) {
+        // Convertir ID lineal a coordenadas [fila, columna]
+        int[] coords = getCoordsFromId(casilleroId);
+        if (coords == null) return; // ID inválido
+
+        int r = coords[0];
+        int c = coords[1];
+
+        matrizLock.lock();
+        try {
+            if (casilleros[r][c].getEstado() == EstadoCasillero.OCUPADO) {
+                casilleros[r][c].liberar();
+                // System.out.println("Casillero ID " + casilleroId + " en [" + r + "," + c + "] liberado.");
             }
         } finally {
             matrizLock.unlock();
         }
     }
 
-    // Obtiene estadísticas finales (ACTUALIZADO PARA MOSTRAR CONTADOR Y LÍMITE)
+    /**
+     * Pone un casillero específico fuera de servicio usando su ID lineal.
+     * @param casilleroId El ID lineal del casillero a poner fuera de servicio.
+     */
+    public void ponerFueraDeServicio(int casilleroId) {
+        int[] coords = getCoordsFromId(casilleroId);
+        if (coords == null) return; // ID inválido
+
+        int r = coords[0];
+        int c = coords[1];
+
+        matrizLock.lock();
+        try {
+            // Solo poner fuera de servicio si está OCUPADO (o VACIO, si se quiere permitir)
+            if (casilleros[r][c].getEstado() == EstadoCasillero.OCUPADO) {
+                casilleros[r][c].ponerFueraDeServicio();
+                // System.out.println("Casillero ID " + casilleroId + " en [" + r + "," + c + "] fuera de servicio.");
+            }
+            // Considerar si se puede poner fuera de servicio un casillero ya VACIO:
+            // else if (casilleros[r][c].getEstado() == EstadoCasillero.VACIO) {
+            //     casilleros[r][c].ponerFueraDeServicio();
+            // }
+        } finally {
+            matrizLock.unlock();
+        }
+    }
+
+    /**
+     * Obtiene estadísticas finales recorriendo la matriz 2D.
+     * @return Un string con el resumen del estado y uso de los casilleros.
+     */
     public String getEstadisticas() {
-        matrizLock.lock(); // Bloquear para obtener una foto consistente
+        matrizLock.lock();
         try {
             long vacios = 0;
             long ocupados = 0;
             long fueraServicio = 0;
             long totalUsos = 0;
 
-            for (Casillero c : casilleros) {
-                totalUsos += c.getContadorUso();
-                switch (c.getEstado()) {
-                    case VACIO: vacios++; break;
-                    case OCUPADO: ocupados++; break; // No debería haber ocupados al final si todo terminó bien
-                    case FUERA_DE_SERVICIO: fueraServicio++; break;
+            // Iterar sobre la matriz 2D
+            for (int r = 0; r < numRows; r++) {
+                for (int c = 0; c < numCols; c++) {
+                    Casillero casillero = casilleros[r][c];
+                    totalUsos += casillero.getContadorUso();
+                    switch (casillero.getEstado()) {
+                        case VACIO: vacios++; break;
+                        case OCUPADO: ocupados++; break;
+                        case FUERA_DE_SERVICIO: fueraServicio++; break;
+                    }
                 }
             }
-             // Devolvemos la cadena formateada incluyendo el contador y el límite
-            return String.format(
-                "Estado Final Casilleros: Vacíos=%d, Ocupados=%d, FueraDeServicio=%d (Contador FdS: %d, Límite: %d) | Usos Totales Registrados=%d",
-                vacios, ocupados, fueraServicio, fueraDeServicioCount.get(), this.maxFueraDeServicio, totalUsos
-            );
+            return String.format("Estado Final Casilleros (%dx%d): Vacíos=%d, Ocupados=%d, FueraDeServicio=%d | Usos Totales Registrados=%d",
+                                 numRows, numCols, vacios, ocupados, fueraServicio, totalUsos);
         } finally {
             matrizLock.unlock();
         }
     }
 
-    // --- Método Opcional (No usado en el flujo actual, pero podría ser útil) ---
-    // Podrías añadir un método para "reparar" casilleros FdS si quisieras
-    /*
-    public void repararCasillero(int casilleroId) {
-        if (casilleroId < 0 || casilleroId >= totalCasilleros) return;
-        matrizLock.lock();
-        try {
-            if (casilleros[casilleroId].getEstado() == EstadoCasillero.FUERA_DE_SERVICIO) {
-                casilleros[casilleroId].liberar(); // Lo pone VACIO
-                fueraDeServicioCount.decrementAndGet(); // Decrementa el contador
-                System.out.println("Casillero " + casilleroId + " reparado y puesto como VACIO. Total FdS: " + fueraDeServicioCount.get());
-            }
-        } finally {
-            matrizLock.unlock();
+    /**
+     * Convierte un ID lineal (0 a totalCasilleros-1) a coordenadas [fila, columna].
+     * @param casilleroId El ID lineal.
+     * @return Un array de int `[fila, columna]` o `null` si el ID es inválido.
+     */
+    private int[] getCoordsFromId(int casilleroId) {
+        if (casilleroId < 0 || casilleroId >= totalCasilleros) {
+             System.err.println("Error: Intento de acceso a casillero con ID inválido: " + casilleroId);
+            return null; // ID fuera de rango
         }
+        int r = casilleroId / numCols; // División entera da la fila
+        int c = casilleroId % numCols; // Módulo da la columna
+        return new int[]{r, c};
+    }
+
+    // --- Métodos Adicionales (Opcionales) ---
+
+    /**
+     * Obtiene el número total de casilleros.
+     * @return El total de casilleros (filas * columnas).
+     */
+    public int getTotalCasilleros() {
+        return totalCasilleros;
+    }
+
+     /**
+     * Obtiene el casillero en una coordenada específica (si necesitas acceso directo).
+     * ¡Precaución! Devolver el objeto directamente podría permitir manipulación externa sin lock.
+     * Es mejor exponer solo el estado si es necesario.
+     * @param row Fila.
+     * @param col Columna.
+     * @return El objeto Casillero o null si las coordenadas son inválidas.
+     */
+     /*
+    public Casillero getCasilleroAt(int row, int col) {
+        if (row >= 0 && row < numRows && col >= 0 && col < numCols) {
+            return casilleros[row][col];
+        }
+        return null;
     }
     */
+
+     /**
+      * Obtiene el estado de un casillero por ID.
+      * @param casilleroId ID lineal del casillero.
+      * @return El EstadoCasillero o null si el ID es inválido.
+      */
+     public EstadoCasillero getEstadoCasillero(int casilleroId) {
+         int[] coords = getCoordsFromId(casilleroId);
+         if (coords == null) return null;
+         // No necesita lock porque el estado es volatile y solo leemos
+         return casilleros[coords[0]][coords[1]].getEstado();
+     }
 }
