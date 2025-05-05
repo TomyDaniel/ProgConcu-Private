@@ -61,7 +61,7 @@ public class RegistroPedidos {
     }
 
     //Agregar una sincronizacion extra en pedido aleatorio
-    private synchronized Pedido obtenerPedidoAleatorio(List<Pedido> lista) {
+    private  Pedido obtenerPedidoAleatorio(List<Pedido> lista) {
         if (lista.isEmpty()) {
             return null;
         }

@@ -5,12 +5,10 @@ public class Pedido {
 
     private final int id;
     private int casilleroId = -1;
-    private long tiempoCreacion;
     private final ReentrantLock lock = new ReentrantLock(); // Lock por pedido es CRUCIAL
 
     public Pedido() {
         this.id = ID_GENERATOR.incrementAndGet();
-        this.tiempoCreacion = System.currentTimeMillis();
     }
 
     public void asignarCasillero(int casilleroId) {
@@ -26,14 +24,6 @@ public class Pedido {
 
     public int getCasilleroId() {
         return casilleroId;
-    }
-
-    public long getTiempoCreacion() {
-        return tiempoCreacion;
-    }
-
-    public long getTiempoTranscurrido() {
-        return System.currentTimeMillis() - tiempoCreacion;
     }
 
     @Override
