@@ -1,20 +1,19 @@
-// VerificadorPedido.java
 import java.util.Random;
 import java.util.concurrent.atomic.AtomicBoolean;
 
 public class VerificadorPedido implements Runnable {
+    private final Random random = new Random();
     private final RegistroPedidos registro;
+    private final AtomicBoolean running;
     private final int demoraBaseMs;
     private final int variacionDemoraMs;
-    private final double probExito;
-    private final Random random = new Random();
-     private final AtomicBoolean running;
+    private static final int PROBABILIDAD_EXITO = 95; // 95% de éxito
 
-    public VerificadorPedido(RegistroPedidos reg, int demoraBase, int variacion, double probExito, AtomicBoolean running) {
-        this.registro = reg;
-        this.demoraBaseMs = demoraBase;
-        this.variacionDemoraMs = variacion;
-        this.probExito = probExito;
+    public VerificadorPedido(RegistroPedidos registro, int demoraBaseMs,
+                             int variacionDemoraMs, AtomicBoolean running) {
+        this.registro = registro;
+        this.demoraBaseMs = demoraBaseMs;
+        this.variacionDemoraMs = variacionDemoraMs;
         this.running = running;
     }
 
@@ -22,40 +21,45 @@ public class VerificadorPedido implements Runnable {
     public void run() {
         System.out.println(Thread.currentThread().getName() + " iniciado.");
         try {
-             // isEmpty() es más eficiente que size()
-             while (running.get() || !registro.pedidosEntregados.isEmpty()) {
-                 // *** CAMBIO PRINCIPAL: Usar selección aleatoria ***
-                Pedido pedido = registro.tomarDeEntregadosAleatorio();
-
+            while (running.get() || registro.getCantidadEntregados()>0) {
+                Pedido pedido = registro.obtenerPedidoEntregadoAleatorio();
                 if (pedido != null) {
-                    pedido.lock();
-                    try {
-                        boolean exito = random.nextDouble() < probExito;
-                        if (exito) {
-                            registro.agregarAVerificados(pedido);
-                           // System.out.println(Thread.currentThread().getName() + " verificó con éxito " + pedido);
-                        } else {
-                            registro.agregarAFallidos(pedido);
-                           // System.out.println(Thread.currentThread().getName() + " falló verificación de " + pedido);
-                        }
-                    } finally {
-                        pedido.unlock();
-                    }
-                    dormir();
-                } else if (running.get()){
-                     // Si no hay pedidos y la simulación sigue, esperar un poco más
-                     Thread.sleep(30); // Espera aumentada
+                    procesarPedido(pedido);
                 }
+                aplicarDemora();
             }
         } catch (InterruptedException e) {
             Thread.currentThread().interrupt();
             System.out.println(Thread.currentThread().getName() + " interrumpido.");
         }
-         System.out.println(Thread.currentThread().getName() + " terminado.");
+        System.out.println(Thread.currentThread().getName() + " terminado.");
     }
 
-      private void dormir() throws InterruptedException {
-        int demora = demoraBaseMs + (variacionDemoraMs > 0 ? random.nextInt(variacionDemoraMs * 2 + 1) - variacionDemoraMs : 0);
-        Thread.sleep(Math.max(0, demora));
+    private void procesarPedido(Pedido pedido) {
+        pedido.lock();
+        try {
+            // Verificar con 95% de éxito
+            boolean exitoso = random.nextInt(100) < PROBABILIDAD_EXITO;
+
+            // Remover de entregados primero
+            registro.removerDeEntregados(pedido);
+
+            if (exitoso) {
+                registro.agregarAVerificados(pedido);
+            } else {
+                registro.agregarAFallidos(pedido);
+            }
+        } finally {
+            pedido.unlock();
+        }
+    }
+
+    private void aplicarDemora() throws InterruptedException {
+        int variacion = 0;
+        if (variacionDemoraMs > 0) {
+            variacion = random.nextInt(variacionDemoraMs * 2 + 1) - variacionDemoraMs;
+        }
+        int demora = Math.max(0, demoraBaseMs + variacion);
+        Thread.sleep(demora);
     }
 }

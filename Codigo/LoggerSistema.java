@@ -76,7 +76,7 @@ public class LoggerSistema {
         logMensaje("Tiempo total de ejecución: " + tiempoTotalMs + " ms (" + tiempoTotalMs / 1000.0 + " segundos)");
         logMensaje("Total Pedidos Fallidos: " + registro.getCantidadFallidos());
         logMensaje("Total Pedidos Verificados: " + registro.getCantidadVerificados());
-        logMensaje(matriz.getEstadisticas());
+        //logMensaje(matriz.getEstadisticas());
         logMensaje("Pedidos restantes en Preparación: " + registro.getCantidadEnPreparacion());
         logMensaje("Pedidos restantes en Tránsito: " + registro.getCantidadEnTransito());
         logMensaje("Pedidos restantes Entregados: " + registro.getCantidadEntregados());

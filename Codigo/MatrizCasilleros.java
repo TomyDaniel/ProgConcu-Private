@@ -1,99 +1,86 @@
-// --- Clases de Gestión de Recursos Compartidos ---
-// MatrizCasilleros.java
 import java.util.ArrayList;
+import java.util.Collections;
 import java.util.List;
-import java.util.Random;
-import java.util.concurrent.locks.ReentrantLock;
-import java.util.stream.Collectors;
-
+import java.util.concurrent.locks.Lock;
+import java.util.concurrent.locks.ReentrantReadWriteLock;
 public class MatrizCasilleros {
-    private final Casillero[] casilleros;
-    private final int totalCasilleros;
-    private final ReentrantLock matrizLock = new ReentrantLock(); // Lock para operaciones sobre la matriz/casilleros
-    private final Random random = new Random(); // Para selección aleatoria
+    private final Casillero[][] matriz;
+    private final int filas;
+    private final int columnas;
+    private final ReentrantReadWriteLock rwLock = new ReentrantReadWriteLock();
+    private final Lock readLock = rwLock.readLock();
+    private final Lock writeLock = rwLock.writeLock();
 
-    public MatrizCasilleros(int numCasilleros) {
-        this.totalCasilleros = numCasilleros;
-        this.casilleros = new Casillero[numCasilleros];
-        for (int i = 0; i < numCasilleros; i++) {
-            casilleros[i] = new Casillero(i);
+    public MatrizCasilleros(int filas, int columnas) {
+        this.filas = filas;
+        this.columnas = columnas;
+        matriz = new Casillero[filas][columnas];
+
+        // Inicializar todos los casilleros como vacíos
+        for (int i = 0; i < filas; i++) {
+            for (int j = 0; j < columnas; j++) {
+                matriz[i][j] = new Casillero();
+            }
         }
     }
 
-    // Busca un casillero vacío aleatorio y lo ocupa. Devuelve el ID o -1 si no hay.
     public int ocuparCasilleroAleatorio() {
-        matrizLock.lock();
+        readLock.lock();
         try {
-            List<Integer> vacios = new ArrayList<>();
-            for (int i = 0; i < totalCasilleros; i++) {
-                if (casilleros[i].getEstado() == EstadoCasillero.VACIO) {
-                    vacios.add(i);
+            // Crear lista de posiciones a intentar (orden aleatorio)
+            List<Integer> posiciones = new ArrayList<>(filas * columnas);
+            for (int i = 0; i < filas * columnas; i++) {
+                posiciones.add(i);
+            }
+            Collections.shuffle(posiciones);
+
+            // Probar cada posición hasta encontrar una disponible
+            for (int pos : posiciones) {
+                int fila = pos / columnas;
+                int col = pos % columnas;
+
+                // Upgrade a write lock solo si encontramos casillero disponible
+                readLock.unlock();
+                writeLock.lock();
+                try {
+                    if (matriz[fila][col].getEstado()==EstadoCasillero.VACIO) {
+                        matriz[fila][col].ocupar();
+                        return pos;
+                    }
+                } finally {
+                    // Downgrade de nuevo a read lock
+                    readLock.lock();
+                    writeLock.unlock();
                 }
             }
-
-            if (vacios.isEmpty()) {
-                return -1; // No hay casilleros vacíos
-            }
-
-            int indiceAleatorio = random.nextInt(vacios.size());
-            int casilleroId = vacios.get(indiceAleatorio);
-            casilleros[casilleroId].ocupar();
-            //System.out.println(Thread.currentThread().getName() + " ocupó casillero " + casilleroId);
-            return casilleroId;
+            // No se encontró casillero disponible
+            return -1;
         } finally {
-            matrizLock.unlock();
+            readLock.unlock();
         }
     }
 
-    // Libera un casillero específico
     public void liberarCasillero(int casilleroId) {
-        if (casilleroId < 0 || casilleroId >= totalCasilleros) return;
-        matrizLock.lock();
+        int fila = casilleroId / columnas;
+        int col = casilleroId % columnas;
+
+        writeLock.lock();
         try {
-            if (casilleros[casilleroId].getEstado() == EstadoCasillero.OCUPADO) {
-                 casilleros[casilleroId].liberar();
-                 //System.out.println("Casillero " + casilleroId + " liberado.");
-            }
+            matriz[fila][col].liberar();
         } finally {
-            matrizLock.unlock();
+            writeLock.unlock();
         }
     }
 
-    // Pone un casillero específico fuera de servicio
-    public void ponerFueraDeServicio(int casilleroId) {
-         if (casilleroId < 0 || casilleroId >= totalCasilleros) return;
-        matrizLock.lock();
-        try {
-            if (casilleros[casilleroId].getEstado() == EstadoCasillero.OCUPADO) {
-                casilleros[casilleroId].ponerFueraDeServicio();
-                //System.out.println("Casillero " + casilleroId + " fuera de servicio.");
-            }
-        } finally {
-            matrizLock.unlock();
-        }
-    }
+    public void marcarFueraDeServicio(int casilleroId) {
+        int fila = casilleroId / columnas;
+        int col = casilleroId % columnas;
 
-    // Obtiene estadísticas finales
-    public String getEstadisticas() {
-        matrizLock.lock();
+        writeLock.lock();
         try {
-            long vacios = 0;
-            long ocupados = 0;
-            long fueraServicio = 0;
-            long totalUsos = 0;
-
-            for (Casillero c : casilleros) {
-                totalUsos += c.getContadorUso();
-                switch (c.getEstado()) {
-                    case VACIO: vacios++; break;
-                    case OCUPADO: ocupados++; break; // No debería haber ocupados al final
-                    case FUERA_DE_SERVICIO: fueraServicio++; break;
-                }
-            }
-            return String.format("Estado Final Casilleros: Vacíos=%d, Ocupados=%d, FueraDeServicio=%d | Usos Totales Registrados=%d",
-                                 vacios, ocupados, fueraServicio, totalUsos);
+            matriz[fila][col].marcarFueraDeServicio();
         } finally {
-            matrizLock.unlock();
+            writeLock.unlock();
         }
     }
 }

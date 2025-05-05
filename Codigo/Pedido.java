@@ -1,40 +1,43 @@
-// Pedido.java
-import java.util.concurrent.locks.ReentrantLock;
 import java.util.concurrent.atomic.AtomicInteger;
-
+import java.util.concurrent.locks.ReentrantLock;
 public class Pedido {
-    private static final AtomicInteger idCounter = new AtomicInteger(0);
+    private static final AtomicInteger ID_GENERATOR = new AtomicInteger(0);
+
     private final int id;
-    private volatile int casilleroIdAsignado = -1; // ID del casillero mientras está en preparación
+    private int casilleroId = -1;
+    private long tiempoCreacion;
     private final ReentrantLock lock = new ReentrantLock(); // Lock por pedido es CRUCIAL
 
     public Pedido() {
-        this.id = idCounter.incrementAndGet();
+        this.id = ID_GENERATOR.incrementAndGet();
+        this.tiempoCreacion = System.currentTimeMillis();
     }
 
-    public int getId() { return id; }
-    public int getCasilleroIdAsignado() { return casilleroIdAsignado; }
-    public void asignarCasillero(int casilleroId) { this.casilleroIdAsignado = casilleroId; }
-    public void liberarCasillero() { this.casilleroIdAsignado = -1; }
-
+    public void asignarCasillero(int casilleroId) {
+        this.casilleroId = casilleroId;
+    }
     // Métodos para bloquear/desbloquear el pedido específico
     public void lock() { lock.lock(); }
     public void unlock() { lock.unlock(); }
 
+    public int getId() {
+        return id;
+    }
+
+    public int getCasilleroId() {
+        return casilleroId;
+    }
+
+    public long getTiempoCreacion() {
+        return tiempoCreacion;
+    }
+
+    public long getTiempoTranscurrido() {
+        return System.currentTimeMillis() - tiempoCreacion;
+    }
+
     @Override
     public String toString() {
-        return "Pedido [id=" + id + ", casilleroId=" + casilleroIdAsignado + "]";
-    }
-     @Override
-    public int hashCode() { // Necesario si se usan en HashMaps/Sets
-        return Integer.hashCode(id);
-    }
-     @Override
-    public boolean equals(Object obj) { // Necesario si se usan en HashMaps/Sets
-        if (this == obj) return true;
-        if (obj == null || getClass() != obj.getClass()) return false;
-        Pedido other = (Pedido) obj;
-        return id == other.id;
+        return "Pedido #" + id + " (casillero: " + casilleroId + ")";
     }
 }
-

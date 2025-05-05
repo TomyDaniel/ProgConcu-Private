@@ -246,6 +246,7 @@ public class Casillero {
 
 ```java
 // DespachadorPedido.java
+
 import java.util.Random;
 import java.util.concurrent.atomic.AtomicBoolean;
 
@@ -269,7 +270,7 @@ public class DespachadorPedido implements Runnable {
 
     @Override
     public void run() {
-         System.out.println(Thread.currentThread().getName() + " iniciado.");
+        System.out.println(Thread.currentThread().getName() + " iniciado.");
         try {
             // Continuar mientras esté corriendo o haya pedidos por procesar en la cola anterior
             // isEmpty() es más eficiente que size() para ConcurrentLinkedQueue
@@ -282,14 +283,14 @@ public class DespachadorPedido implements Runnable {
                     pedido.lock();
                     try {
                         boolean exito = random.nextDouble() < probExito;
-                        int casilleroId = pedido.getCasilleroIdAsignado();
+                        int casilleroId = pedido.getCasilleroId();
 
                         // Asegurarse de que el casillero ID es válido antes de usarlo
                         if (casilleroId < 0) {
-                             System.err.println(Thread.currentThread().getName() + " encontró Pedido " + pedido.getId() + " sin casillero asignado en Despacho!");
-                             // Decide qué hacer: marcar como fallido, reintentar? Aquí lo marcaremos fallido.
-                             registro.agregarAFallidos(pedido);
-                             continue; // Saltar al siguiente ciclo del while
+                            System.err.println(Thread.currentThread().getName() + " encontró Pedido " + pedido.getId() + " sin casillero asignado en Despacho!");
+                            // Decide qué hacer: marcar como fallido, reintentar? Aquí lo marcaremos fallido.
+                            registro.agregarAFallidos(pedido);
+                            continue; // Saltar al siguiente ciclo del while
                         }
 
 
@@ -304,7 +305,7 @@ public class DespachadorPedido implements Runnable {
                             matriz.ponerFueraDeServicio(casilleroId);
                             pedido.liberarCasillero();
                             registro.agregarAFallidos(pedido);
-                             //System.out.println(Thread.currentThread().getName() + " falló despacho de " + pedido + ". Casillero " + casilleroId + " fuera de servicio.");
+                            //System.out.println(Thread.currentThread().getName() + " falló despacho de " + pedido + ". Casillero " + casilleroId + " fuera de servicio.");
                         }
                     } finally {
                         pedido.unlock(); // Siempre liberar el lock del pedido
@@ -315,16 +316,16 @@ public class DespachadorPedido implements Runnable {
                     // debido al posible costo/contención de la selección aleatoria.
                     Thread.sleep(30); // Espera aumentada
                 }
-                 // Si !running.get() y la cola está vacía, el bucle terminará
+                // Si !running.get() y la cola está vacía, el bucle terminará
             }
         } catch (InterruptedException e) {
             Thread.currentThread().interrupt();
-             System.out.println(Thread.currentThread().getName() + " interrumpido.");
+            System.out.println(Thread.currentThread().getName() + " interrumpido.");
         }
-         System.out.println(Thread.currentThread().getName() + " terminado.");
+        System.out.println(Thread.currentThread().getName() + " terminado.");
     }
 
-     private void dormir() throws InterruptedException {
+    private void dormir() throws InterruptedException {
         int demora = demoraBaseMs + (variacionDemoraMs > 0 ? random.nextInt(variacionDemoraMs * 2 + 1) - variacionDemoraMs : 0);
         Thread.sleep(Math.max(0, demora));
     }
