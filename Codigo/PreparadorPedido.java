@@ -11,14 +11,14 @@ public class PreparadorPedido implements Runnable {
     private final RegistroPedidos registro;
     private final MatrizCasilleros matriz;
     private final AtomicBoolean running;
-    private final int demoraBaseMs;
+    private final int demoraPreparador;
     private final int variacionDemoraMs;
     private final int totalPedidosAGenerar;
 
-    public PreparadorPedido(RegistroPedidos registro, MatrizCasilleros matriz, int demoraBaseMs, int variacionDemoraMs, int totalPedidosAGenerar, AtomicBoolean running) {
+    public PreparadorPedido(RegistroPedidos registro, MatrizCasilleros matriz, int demoraPreparador, int variacionDemoraMs, int totalPedidosAGenerar, AtomicBoolean running) {
         this.registro = registro;
         this.matriz = matriz;
-        this.demoraBaseMs = demoraBaseMs;
+        this.demoraPreparador = demoraPreparador;
         this.variacionDemoraMs = variacionDemoraMs;
         this.totalPedidosAGenerar = totalPedidosAGenerar;
         this.running = running;
@@ -62,7 +62,7 @@ public class PreparadorPedido implements Runnable {
         if (variacionDemoraMs > 0) {
             variacion = random.nextInt(variacionDemoraMs * 2 + 1) - variacionDemoraMs;
         }
-        int demora = Math.max(0, demoraBaseMs + variacion);
+        int demora = Math.max(0, demoraPreparador + variacion);
         Thread.sleep(demora);
     }
 }

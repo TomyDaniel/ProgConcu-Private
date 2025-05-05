@@ -32,7 +32,7 @@ public class MatrizCasilleros {
             for (int i = 0; i < filas * columnas; i++) {
                 posiciones.add(i);
             }
-            Collections.shuffle(posiciones);
+            Collections.shuffle(posiciones);  //Randomiza la coleccion
 
             // Probar cada posición hasta encontrar una disponible
             for (int pos : posiciones) {
@@ -43,8 +43,8 @@ public class MatrizCasilleros {
                 readLock.unlock();
                 writeLock.lock();
                 try {
-                    if (matriz[fila][col].getEstado()==EstadoCasillero.VACIO) {
-                        matriz[fila][col].ocupar();
+                    if (matriz[fila][col].getEstado()==EstadoCasillero.VACIO) { //Verifico que el casillero anterior este libre
+                        matriz[fila][col].ocupar(); //Cambio el estado del casillero a OCUPADO
                         return pos;
                     }
                 }

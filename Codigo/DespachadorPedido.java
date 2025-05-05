@@ -7,15 +7,15 @@ public class DespachadorPedido implements Runnable {
     private final RegistroPedidos registro;
     private final MatrizCasilleros matriz;
     private final AtomicBoolean running;
-    private final int demoraBaseMs;
+    private final int demoraDespachador;
     private final int variacionDemoraMs;
     private static final int PROBABILIDAD_EXITO = 85; // 85% de éxito
 
     public DespachadorPedido(RegistroPedidos registro, MatrizCasilleros matriz,
-                             int demoraBaseMs, int variacionDemoraMs, AtomicBoolean running) {
+                             int demoraDespachador, int variacionDemoraMs, AtomicBoolean running) {
         this.registro = registro;
         this.matriz = matriz;
-        this.demoraBaseMs = demoraBaseMs;
+        this.demoraDespachador = demoraDespachador;
         this.variacionDemoraMs = variacionDemoraMs;
         this.running = running;
     }
@@ -27,9 +27,9 @@ public class DespachadorPedido implements Runnable {
             while (running.get() || registro.getCantidadEnPreparacion()>0) {
                 Pedido pedido = registro.obtenerPedidoPreparacionAleatorio();
                 if (pedido != null) {
-                    procesarPedido(pedido);
+                    despacharPedido(pedido);
                 }
-                aplicarDemora();
+                sleepRandom();
             }
         } catch (InterruptedException e) {
             Thread.currentThread().interrupt();
@@ -38,7 +38,7 @@ public class DespachadorPedido implements Runnable {
         System.out.println(Thread.currentThread().getName() + " terminado.");
     }
 
-    private void procesarPedido(Pedido pedido) {
+    private void despacharPedido(Pedido pedido) {
         pedido.lock();
         try {
             int casilleroId = pedido.getCasilleroId();
@@ -61,12 +61,12 @@ public class DespachadorPedido implements Runnable {
         }
     }
 
-    private void aplicarDemora() throws InterruptedException {
+    private void sleepRandom() throws InterruptedException {
         int variacion = 0;
         if (variacionDemoraMs > 0) {
             variacion = random.nextInt(variacionDemoraMs * 2 + 1) - variacionDemoraMs;
         }
-        int demora = Math.max(0, demoraBaseMs + variacion);
-        Thread.sleep(demora);
+        int demora = Math.max(0, demoraDespachador+variacion);
+        Thread.sleep(demora); //Puede lanzar InterruptedException
     }
 }

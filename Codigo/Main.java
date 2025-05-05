@@ -29,7 +29,7 @@ public class Main {
         logger.iniciarLogPeriodico(5000); // Log cada 5 segundos
 
 
-        // Crear hilos
+        // Crear una lista de hilos
         List<Thread> hilos = new ArrayList<>();
 
         // 3 hilos preparadores

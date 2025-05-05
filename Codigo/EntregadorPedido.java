@@ -5,14 +5,14 @@ public class EntregadorPedido implements Runnable {
     private final Random random = new Random();
     private final RegistroPedidos registro;
     private final AtomicBoolean running;
-    private final int demoraBaseMs;
+    private final int demoraEntregador;
     private final int variacionDemoraMs;
     private static final int PROBABILIDAD_EXITO = 90; // 90% de éxito
 
-    public EntregadorPedido(RegistroPedidos registro, int demoraBaseMs,
+    public EntregadorPedido(RegistroPedidos registro, int demoraEntregador,
                             int variacionDemoraMs, AtomicBoolean running) {
         this.registro = registro;
-        this.demoraBaseMs = demoraBaseMs;
+        this.demoraEntregador = demoraEntregador;
         this.variacionDemoraMs = variacionDemoraMs;
         this.running = running;
     }
@@ -24,7 +24,7 @@ public class EntregadorPedido implements Runnable {
             while (running.get() || registro.getCantidadEnTransito()>0) {
                 Pedido pedido = registro.obtenerPedidoTransitoAleatorio();
                 if (pedido != null) {
-                    procesarPedido(pedido);
+                    entregarPedido(pedido);
                 }
                 aplicarDemora();
             }
@@ -35,7 +35,7 @@ public class EntregadorPedido implements Runnable {
         System.out.println(Thread.currentThread().getName() + " terminado.");
     }
 
-    private void procesarPedido(Pedido pedido) {
+    private void entregarPedido(Pedido pedido) {
         pedido.lock();
         try {
             // Procesar con 90% de éxito
@@ -59,7 +59,7 @@ public class EntregadorPedido implements Runnable {
         if (variacionDemoraMs > 0) {
             variacion = random.nextInt(variacionDemoraMs * 2 + 1) - variacionDemoraMs;
         }
-        int demora = Math.max(0, demoraBaseMs + variacion);
+        int demora = Math.max(0, demoraEntregador + variacion);
         Thread.sleep(demora);
     }
 }
