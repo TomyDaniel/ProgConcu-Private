@@ -29,18 +29,27 @@ Este informe detalla el análisis de un conjunto de clases Java diseñadas para 
 
 La simulación sigue una arquitectura multi-hilo basada en el patrón Productor-Consumidor entre las distintas etapas:
 
-*   **Entidades Centrales:** `Pedido` (el objeto que fluye por el sistema) y `Casillero` (el recurso físico limitado).
+*   **Entidades Centrales:**
+    *   `Pedido`: Representa el objeto de datos que fluye por el sistema. Cada instancia contiene su propio bloqueo para garantizar la atomicidad de su procesamiento.
+    *   `Casillero`: Modela el recurso físico limitado, gestionado por `MatrizCasilleros`.
 *   **Gestores de Estado y Recursos:**
-    *   `RegistroPedidos`: Actúa como el repositorio central, manteniendo listas separadas de pedidos según su estado actual (Preparación, Tránsito, Entregados, Verificados, Fallidos). Utiliza colecciones concurrentes para garantizar la seguridad en el acceso multi-hilo.
-    *   `MatrizCasilleros`: Gestiona la cuadrícula de `Casillero`, controlando su ocupación, liberación y estado (incluyendo "Fuera de Servicio"). Utiliza bloqueos de lectura/escritura para manejar el acceso concurrente.
-*   **Trabajadores (Hilos):** Clases que implementan `Runnable` y representan las diferentes operaciones logísticas:
-    *   `PreparadorPedido`: Genera nuevos pedidos, busca y ocupa un casillero, y añade el pedido a la etapa de "Preparación".
-    *   `DespachadorPedido`: Toma pedidos de "Preparación", simula el despacho (con probabilidad de fallo), libera o marca como fuera de servicio el casillero asociado, y mueve el pedido a "Tránsito" o "Fallidos".
-    *   `EntregadorPedido`: Toma pedidos de "Tránsito", simula la entrega (con probabilidad de fallo), y mueve el pedido a "Entregados" o "Fallidos".
-    *   `VerificadorPedido`: Toma pedidos de "Entregados", simula la verificación final (con probabilidad de fallo), y mueve el pedido a "Verificados" o "Fallidos".
+    *   `RegistroPedidos`: Actúa como el repositorio central y monitor de estado. Mantiene colecciones separadas y concurrentes (`CopyOnWriteArrayList`) para los pedidos según su estado actual (Preparación, Tránsito, Entregados, Verificados, Fallidos). Proporciona métodos seguros para que los trabajadores añadan, remuevan y obtengan pedidos.
+    *   `MatrizCasilleros`: Gestiona la disponibilidad y estado de la cuadrícula de `Casillero`. Utiliza un `ReentrantReadWriteLock` para manejar el acceso concurrente de forma eficiente (permitiendo múltiples lectores simultáneos pero escrituras exclusivas). Es responsable de asignar y liberar casilleros.
+*   **Trabajadores (Hilos):** Clases que implementan `Runnable`, cada una representando una etapa del proceso logístico y operando como consumidores de la etapa anterior y productores para la siguiente:
+    *   `PreparadorPedido`: *Productor inicial*. Genera nuevos pedidos, busca y ocupa un casillero a través de `MatrizCasilleros`, y añade el pedido a la etapa de "Preparación" en `RegistroPedidos`.
+    *   `DespachadorPedido`: *Consumidor* de "Preparación" y *Productor* para "Tránsito" o "Fallidos". Toma pedidos, simula el despacho (con probabilidad de fallo), interactúa con `MatrizCasilleros` para liberar o marcar como fuera de servicio el casillero, y actualiza el estado del pedido en `RegistroPedidos`.
+    *   `EntregadorPedido`: *Consumidor* de "Tránsito" y *Productor* para "Entregados" o "Fallidos". Procesa pedidos en tránsito, simula la entrega (con probabilidad de fallo) y actualiza su estado.
+    *   `VerificadorPedido`: *Consumidor* de "Entregados" y *Productor* para "Verificados" o "Fallidos". Realiza la verificación final simulada y actualiza el estado.
 *   **Orquestación y Monitoreo:**
-    *   `Main`: Punto de entrada. Configura parámetros, inicializa los gestores, crea e inicia todos los hilos trabajadores, monitoriza el estado general y gestiona la finalización de la simulación.
-    *   `LoggerSistema`: Registra eventos clave, estadísticas periódicas y un informe final en un archivo de log.
+    *   `Main`: Punto de entrada de la aplicación. Responsable de:
+        *   Leer/definir parámetros de configuración (tamaño de matriz, número de hilos por etapa, demoras, probabilidad de fallos, total de pedidos a generar).
+        *   Inicializar los gestores (`MatrizCasilleros`, `RegistroPedidos`) y el `LoggerSistema`.
+        *   Crear e iniciar todos los hilos trabajadores.
+        *   Implementar la lógica de monitoreo y finalización (a menudo mediante un hilo "Monitor" o directamente en `main`): comprueba periódicamente si se alcanzó el objetivo de pedidos o si la matriz está llena (`MatrizLlenaException`), y señala la finalización a los trabajadores (usando `AtomicBoolean running`).
+        *   Esperar (`join`) la finalización de todos los hilos trabajadores.
+        *   Registrar el informe final a través del `LoggerSistema`.
+    *   `LoggerSistema`: Utiliza un `ScheduledExecutorService` para registrar estadísticas clave del `RegistroPedidos` de forma periódica en un archivo de log (`simulacion_logistica.log`), permitiendo observar el progreso y comportamiento del sistema. También registra eventos importantes y un resumen final detallado.
+
 
 ## 3. Descripción de Componentes Principales
 
@@ -75,53 +84,60 @@ La simulación sigue una arquitectura multi-hilo basada en el patrón Productor-
 
 ### 3.3. Trabajadores Concurrentes (`Runnable`)
 
-Todos los trabajadores comparten una estructura similar:
-*   Implementan `Runnable` para ser ejecutados por `Thread`.
-*   Reciben dependencias (`RegistroPedidos`, `MatrizCasilleros` si es necesario), parámetros de demora y la bandera `AtomicBoolean running`.
-*   El método `run()` contiene un bucle principal que se ejecuta mientras `running` es `true` o mientras queden pedidos en su etapa de entrada.
-*   Obtienen un pedido de la etapa anterior (usando `RegistroPedidos`).
-*   **Bloquean el pedido (`pedido.lock()`)** antes de procesarlo.
-*   Realizan la lógica específica de su etapa (interactuando con `RegistroPedidos` y `MatrizCasilleros`).
-*   **Desbloquean el pedido (`pedido.unlock()`)** en un bloque `finally`.
-*   Aplican una demora aleatoria (`aplicarDemora`) para simular el tiempo de procesamiento.
+Todos los trabajadores (`PreparadorPedido`, `DespachadorPedido`, `EntregadorPedido`, `VerificadorPedido`) comparten una estructura base:
+*   Implementan `Runnable`.
+*   Reciben referencias a los gestores necesarios (`RegistroPedidos`, `MatrizCasilleros`), parámetros de configuración (demoras) y la bandera `AtomicBoolean running`.
+*   Su método `run()` contiene un bucle principal que se ejecuta mientras `running` es `true` y/o queden elementos en su cola de entrada (dependiendo de la lógica específica de cada trabajador para asegurar que se procesen todos los pedidos pendientes).
+*   Dentro del bucle:
+    1.  Obtienen un pedido de la etapa anterior desde `RegistroPedidos`.
+    2.  Si obtienen un pedido:
+        *   **Bloquean el pedido:** `pedido.lock();`
+        *   **Procesan el pedido:** Realizan la lógica específica de su etapa (simular tiempo, actualizar estado, interactuar con `MatrizCasilleros` si aplica).
+        *   **Actualizan `RegistroPedidos`:** Remueven el pedido de la lista origen y lo añaden a la lista destino (o fallidos).
+        *   **Desbloquean el pedido:** `finally { pedido.unlock(); }`
+    3.  Aplican una demora (`Thread.sleep`) para simular el tiempo de procesamiento.
+*   Manejan `InterruptedException` para permitir una finalización limpia.
 
-*   **`PreparadorPedido.java`**: Genera pedidos, ocupa casilleros, añade a `pedidosPreparacion`.
-*   **`DespachadorPedido.java`**: Procesa `pedidosPreparacion`, libera/inhabilita casilleros, añade a `pedidosTransito` o `pedidosFallidos`.
-*   **`EntregadorPedido.java`**: Procesa `pedidosTransito`, añade a `pedidosEntregados` o `pedidosFallidos`.
-*   **`VerificadorPedido.java`**: Procesa `pedidosEntregados`, añade a `pedidosVerificados` o `pedidosFallidos`.
 
 ### 3.4. Orquestación y Utilidades
 
-*   **`Main.java`**:
-    *   Define constantes de configuración (tamaño matriz, nº hilos, demoras, total pedidos, probabilidades).
-    *   Inicializa `MatrizCasilleros`, `RegistroPedidos`, `LoggerSistema` y `AtomicBoolean running`.
-    *   Crea y arranca múltiples instancias de cada tipo de trabajador en hilos separados.
-    *   Inicia un hilo "Monitor" adicional que imprime estadísticas periódicamente y establece `running` a `false` cuando se cumple la condición de finalización (todos los pedidos procesados o matriz llena).
-    *   Espera (`join`) a que todos los hilos terminen.
-    *   Imprime resultados finales y llama al `logFinal` del logger.
+**`Main.java`**:
+*   Define constantes o lee configuración para parámetros clave.
+*   Inicializa todos los componentes compartidos.
+*   Crea los `ThreadPools` (o hilos individuales) para cada tipo de trabajador y los inicia.
+*   Implementa la lógica de control:
+*   Monitorea las condiciones de finalización (total de pedidos alcanzado o `MatrizLlenaException`).
+*   Establece `running.set(false)` para señalar a los trabajadores que deben terminar.
+*   Espera (`join`) a que todos los hilos finalicen su trabajo pendiente.
+*   Invoca al `LoggerSistema` para generar el informe final.
 *   **`LoggerSistema.java`**:
-    *   Utiliza un `ScheduledExecutorService` para escribir estadísticas periódicas (`getCantidadFallidos`, `getCantidadVerificados`) en un archivo (`simulacion_logistica.log`).
-    *   Permite registrar mensajes individuales (`logMensaje`).
-    *   Escribe un informe final (`logFinal`) con estadísticas completas al terminar la simulación.
+    *   Proporciona una visión del estado interno de la simulación a lo largo del tiempo.
+    *   Usa `ScheduledExecutorService` para tareas periódicas (estadísticas).
+    *   Escribe logs en un archivo (`simulacion_logistica.log`) usando `PrintWriter`, asegurando el `flush` para visibilidad inmediata.
+    *   El método `logFinal` resume las estadisticas mas importantes de la simulacion.
+
 
 ## 4. Estrategia de Concurrencia
 
-La correcta ejecución concurrente se basa en varios mecanismos:
+La ejecución concurrente se basa en varios mecanismos:
 
-1.  **Bloqueo a Nivel de Pedido:** El uso de un `ReentrantLock` **dentro de cada objeto `Pedido`** es la piedra angular. Asegura que solo un hilo trabajador puede modificar el estado o los datos asociados a un pedido específico en un momento dado, previniendo condiciones de carrera cuando múltiples despachadores, entregadores, etc., podrían intentar procesar el mismo pedido.
-2.  **Bloqueo de Lectura/Escritura en Matriz:** El `ReentrantReadWriteLock` en `MatrizCasilleros` permite un acceso concurrente eficiente a la matriz. Múltiples hilos pueden leer el estado de los casilleros simultáneamente (p.ej., al buscar uno vacío o verificar el estado crítico), pero las operaciones que modifican la matriz (ocupar, liberar, marcar fuera de servicio) requieren un bloqueo exclusivo de escritura.
-3.  **Colecciones Concurrentes:** `RegistroPedidos` utiliza `CopyOnWriteArrayList` para sus listas. Esto garantiza que la iteración sobre las listas y las lecturas (`size()`, `get()`) sean seguras frente a modificaciones concurrentes, aunque las operaciones de modificación (`add`, `remove`) pueden ser costosas ya que implican copiar la estructura subyacente.
-4.  **Variables Atómicas:** Se usan `AtomicInteger` (para IDs de pedido y contador de preparados) y `AtomicBoolean` (para la bandera `running`) para garantizar operaciones atómicas y visibilidad entre hilos para estos contadores y banderas simples.
-5.  **Modelo de Hilos:** Se crean múltiples hilos para cada tipo de tarea (`Preparador`, `Despachador`, etc.), permitiendo un procesamiento paralelo real de las diferentes etapas y pedidos.
+1.  **Bloqueo a Nivel de Pedido (`Pedido.lock()`):** Es la garantía principal de **atomicidad por pedido**. Asegura que las operaciones sobre un `Pedido` específico sean realizadas por un solo hilo a la vez, evitando race conditions al moverlo entre etapas o modificar sus datos.
+2.  **Bloqueo de Lectura/Escritura en `MatrizCasilleros`:** Optimiza el acceso a los casilleros. Permite consultas concurrentes (lectura) pero serializa las modificaciones (escritura), manteniendo la integridad de la matriz.
+3.  **Colecciones Concurrentes (`CopyOnWriteArrayList` en `RegistroPedidos`):** Simplifica el manejo de las listas de pedidos, ofreciendo seguridad en lecturas e iteraciones sin bloqueos explícitos, adecuado para escenarios donde las lecturas superan ampliamente las escrituras.
+4.  **Variables Atómicas (`AtomicInteger`, `AtomicBoolean`):** Garantizan operaciones indivisibles y visibilidad entre hilos para contadores simples (IDs, estadísticas) y banderas de control (`running`).
+5.  **Modelo Productor-Consumidor:** La arquitectura general desacopla las etapas. Cada conjunto de trabajadores de una etapa consume la salida de la anterior y produce para la siguiente, usando `RegistroPedidos` como el buffer compartido y sincronizado.
+6.  **Manejo Controlado de Hilos:** La creación, inicio, señalización de parada (`running` flag) y espera (`join`) en `Main` aseguran un ciclo de vida ordenado para los hilos trabajadores.
+
 
 ## 5. Flujo Típico de un Pedido (Caso Exitoso)
 
-1.  Un `PreparadorPedido` crea un `Pedido`, encuentra y ocupa un `Casillero` vía `MatrizCasilleros`, y lo añade a `pedidosPreparacion` en `RegistroPedidos`.
-2.  Un `DespachadorPedido` obtiene el `Pedido` de `pedidosPreparacion`, lo bloquea, libera el `Casillero` asociado (vía `MatrizCasilleros`), lo elimina de `pedidosPreparacion` y lo añade a `pedidosTransito` en `RegistroPedidos`. Desbloquea el pedido.
-3.  Un `EntregadorPedido` obtiene el `Pedido` de `pedidosTransito`, lo bloquea, lo elimina de `pedidosTransito` y lo añade a `pedidosEntregados`. Desbloquea el pedido.
-4.  Un `VerificadorPedido` obtiene el `Pedido` de `pedidosEntregados`, lo bloquea, lo elimina de `pedidosEntregados` y lo añade a `pedidosVerificados`. Desbloquea el pedido.
+1.  **Preparación:** Un `PreparadorPedido` obtiene un `Casillero` de `MatrizCasilleros`, crea un `Pedido`, lo bloquea, lo asigna al casillero, lo añade a `pedidosPreparacion` en `RegistroPedidos`, y lo desbloquea.
+2.  **Despacho:** Un `DespachadorPedido` obtiene el `Pedido` de `pedidosPreparacion`, lo bloquea, simula el despacho (exitoso), libera el `Casillero` vía `MatrizCasilleros`, lo mueve de `pedidosPreparacion` a `pedidosTransito` en `RegistroPedidos`, y lo desbloquea.
+3.  **Entrega:** Un `EntregadorPedido` obtiene el `Pedido` de `pedidosTransito`, lo bloquea, simula la entrega (exitosa), lo mueve de `pedidosTransito` a `pedidosEntregados` en `RegistroPedidos`, y lo desbloquea.
+4.  **Verificación:** Un `VerificadorPedido` obtiene el `Pedido` de `pedidosEntregados`, lo bloquea, simula la verificación (exitosa), lo mueve de `pedidosEntregados` a `pedidosVerificados` en `RegistroPedidos`, y lo desbloquea.
 
-*Nota: En caso de fallo simulado en Despacho, Entrega o Verificación, el pedido iría a la lista `pedidosFallidos` y, en el caso del Despacho, el casillero se marcaría como `FUERA_DE_SERVICIO`.*
+*(Nota: En caso de fallo simulado en Despacho, Entrega o Verificación, el pedido se movería a `pedidosFallidos`. Si el fallo es en Despacho, el casillero podría marcarse como `FUERA_DE_SERVICIO`)*
+
 
 ## 6. Configuración y Logging
 
