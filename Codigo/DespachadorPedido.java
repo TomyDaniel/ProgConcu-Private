@@ -1,21 +1,20 @@
-// DespachadorPedido.java
-import java.util.Random;
+import java.util.Random; // Usado indirectamente o potencialmente por ThreadLocalRandom
+import java.util.concurrent.ThreadLocalRandom;
 import java.util.concurrent.atomic.AtomicBoolean;
+// No se necesita import para EstadoPedido, Pedido, RegistroPedidos, MatrizCasilleros si están en el mismo paquete
 
 public class DespachadorPedido implements Runnable {
-    private final Random random = new Random();
+    // ... (campos sin cambios)
     private final RegistroPedidos registro;
-    private final MatrizCasilleros matriz;
+    private final MatrizCasilleros matriz; // Necesaria para liberar casillero
     private final AtomicBoolean running;
-    private final int demoraDespachador;
+    private final int demoraBaseMs;
     private final int variacionDemoraMs;
-    private static final int PROBABILIDAD_EXITO = 85; // 85% de éxito
 
-    public DespachadorPedido(RegistroPedidos registro, MatrizCasilleros matriz,
-                             int demoraDespachador, int variacionDemoraMs, AtomicBoolean running) {
+    public DespachadorPedido(RegistroPedidos registro, MatrizCasilleros matriz, int demoraBaseMs, int variacionDemoraMs, AtomicBoolean running) {
         this.registro = registro;
         this.matriz = matriz;
-        this.demoraDespachador = demoraDespachador;
+        this.demoraBaseMs = demoraBaseMs;
         this.variacionDemoraMs = variacionDemoraMs;
         this.running = running;
     }
@@ -24,12 +23,16 @@ public class DespachadorPedido implements Runnable {
     public void run() {
         System.out.println(Thread.currentThread().getName() + " iniciado.");
         try {
-            while (running.get() || registro.getCantidadEnPreparacion()>0) {
-                Pedido pedido = registro.obtenerPedidoPreparacionAleatorio();
-                if (pedido != null) {
-                    despacharPedido(pedido);
+            // Bucle principal: sigue mientras 'running' sea true O mientras queden pedidos por despachar
+            while (running.get() || registro.getCantidad(EstadoPedido.PREPARACION) > 0) {
+                // Si !running.get(), solo procesamos los restantes, si no hay, salimos.
+                if (!running.get() && registro.getCantidad(EstadoPedido.PREPARACION) == 0) {
+                    break;
                 }
-                sleepRandom();
+
+                procesarPedido();
+                aplicarDemora();
+
             }
         } catch (InterruptedException e) {
             Thread.currentThread().interrupt();
@@ -38,35 +41,51 @@ public class DespachadorPedido implements Runnable {
         System.out.println(Thread.currentThread().getName() + " terminado.");
     }
 
-    private void despacharPedido(Pedido pedido) {
-        pedido.lock();
-        try {
-            int casilleroId = pedido.getCasilleroId();
-            boolean exitoso = random.nextInt(100) < PROBABILIDAD_EXITO;
+    private void procesarPedido() {
+        // Obtener un pedido aleatorio de PREPARACION (no lo remueve aún)
+        Pedido pedido = registro.obtenerPedidoAleatorio(EstadoPedido.PREPARACION);
 
-            // Remover de preparación primero
-            registro.removerDePreparacion(pedido);
+        if (pedido != null) {
+            // Bloquear el pedido específico para procesarlo
+            pedido.lock();
+            try {
+                // Intentar remover el pedido específico de PREPARACION.
+                // Es posible que otro hilo lo haya removido entre obtenerPedidoAleatorio y aquí.
+                boolean removido = registro.removerPedido(pedido, EstadoPedido.PREPARACION); // <-- MODIFICADO: Usar método de RegistroPedidos
 
-            if (exitoso) {
-                // Caso exitoso
-                matriz.liberarCasillero(casilleroId);
-                registro.agregarATransito(pedido);
-            } else {
-                // Caso fallido
-                matriz.marcarFueraDeServicio(casilleroId);
-                registro.agregarAFallidos(pedido);
+                if (removido) {
+                    // El pedido fue exitosamente "adquirido" por este hilo Despachador.
+                    int casilleroId = pedido.getCasilleroId();
+                    // Liberar el casillero asociado al pedido
+                    if (casilleroId != -1) {
+                        matriz.liberarCasillero(casilleroId);
+                        System.out.println(Thread.currentThread().getName() + " liberó casillero " + casilleroId + " para " + pedido);
+                        // Considerar si se debe quitar el ID del casillero del pedido ahora que está libre
+                        // pedido.asignarCasillero(-1); // Opcional, depende de si se reutiliza el campo
+                    } else {
+                        // Esto no debería ocurrir si los Preparadores siempre asignan casillero
+                        System.out.println(Thread.currentThread().getName() + " despachó " + pedido + " pero no tenía casillero asignado (?)");
+                    }
+                    // Mover a tránsito
+                    registro.agregarPedido(pedido, EstadoPedido.TRANSITO);
+                    System.out.println(Thread.currentThread().getName() + " despachó " + pedido + " a tránsito.");
+                }
+                // Si removido es false, otro hilo Despachador ya procesó este pedido. No hacemos nada.
+
+            } finally {
+                // Siempre liberar el lock del pedido
+                pedido.unlock();
             }
-        } finally {
-            pedido.unlock();
         }
+        // Si pedido es null, no hay nada en PREPARACION para despachar en este momento.
     }
 
-    private void sleepRandom() throws InterruptedException {
-        int variacion = 0;
-        if (variacionDemoraMs > 0) {
-            variacion = random.nextInt(variacionDemoraMs * 2 + 1) - variacionDemoraMs;
-        }
-        int demora = Math.max(0, demoraDespachador+variacion);
-        Thread.sleep(demora); //Puede lanzar InterruptedException
+
+    private void aplicarDemora() throws InterruptedException {
+        // ... (igual que en PreparadorPedido)
+        int variacion = (variacionDemoraMs > 0)
+                ? ThreadLocalRandom.current().nextInt(-variacionDemoraMs, variacionDemoraMs + 1)
+                : 0;
+        Thread.sleep(Math.max(0, demoraBaseMs + variacion));
     }
 }

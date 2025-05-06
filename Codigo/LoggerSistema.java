@@ -1,92 +1,89 @@
-
-// --- Clase de Logging ---
-// LoggerSistema.java
 import java.io.FileWriter;
 import java.io.IOException;
 import java.io.PrintWriter;
+import java.time.LocalDateTime;
+import java.time.format.DateTimeFormatter;
 import java.util.concurrent.Executors;
 import java.util.concurrent.ScheduledExecutorService;
 import java.util.concurrent.TimeUnit;
-import java.time.LocalDateTime;
-import java.time.format.DateTimeFormatter;
 
 public class LoggerSistema {
-    private final RegistroPedidos registro;
-    private final String archivoLog;
-    private ScheduledExecutorService scheduler;
-    private PrintWriter writer;
-    private static final DateTimeFormatter dtf = DateTimeFormatter.ofPattern("yyyy-MM-dd HH:mm:ss.SSS");
 
-    public LoggerSistema(RegistroPedidos registro, String archivoLog) {
+    private final String logFilePath;
+    private final RegistroPedidos registro;
+    private final MatrizCasilleros matriz; // Para estadísticas de casilleros
+    private final ScheduledExecutorService scheduler;
+    private final DateTimeFormatter formatter = DateTimeFormatter.ofPattern("yyyy-MM-dd HH:mm:ss.SSS");
+
+    public LoggerSistema(String logFilePath, RegistroPedidos registro, MatrizCasilleros matriz) {
+        this.logFilePath = logFilePath;
         this.registro = registro;
-        this.archivoLog = archivoLog;
+        this.matriz = matriz;
+        this.scheduler = Executors.newSingleThreadScheduledExecutor();
+        // Crear/Limpiar archivo al inicio
+        try (PrintWriter writer = new PrintWriter(new FileWriter(logFilePath, false))) {
+            writer.println("--- Inicio del Log de Simulación ---");
+        } catch (IOException e) {
+            System.err.println("Error al inicializar el archivo de log: " + e.getMessage());
+        }
     }
 
     public void iniciarLogPeriodico(long intervaloMs) {
+        scheduler.scheduleAtFixedRate(this::logEstadoActual, intervaloMs, intervaloMs, TimeUnit.MILLISECONDS);
+        System.out.println("Logger periódico iniciado cada " + intervaloMs + " ms.");
+    }
+
+    public void detenerLogPeriodico() {
+        scheduler.shutdown();
         try {
-            // Append mode true
-            writer = new PrintWriter(new FileWriter(archivoLog, true), true); // Aut flush true
-            scheduler = Executors.newSingleThreadScheduledExecutor();
-
-            Runnable tareaLog = () -> {
-                String timestamp = dtf.format(LocalDateTime.now());
-                int fallidos = registro.getCantidadFallidos();
-                int verificados = registro.getCantidadVerificados();
-                writer.println(String.format("%s - Fallidos: %d, Verificados: %d", timestamp, fallidos, verificados));
-            };
-
-            scheduler.scheduleAtFixedRate(tareaLog, 0, intervaloMs, TimeUnit.MILLISECONDS);
-             logMensaje("Logger periódico iniciado. Escribiendo en: " + archivoLog);
-
-        } catch (IOException e) {
-            System.err.println("Error al iniciar el logger: " + e.getMessage());
-            if (writer != null) writer.close();
-             scheduler = null; // No iniciar si falla el archivo
+            if (!scheduler.awaitTermination(1, TimeUnit.SECONDS)) {
+                scheduler.shutdownNow();
+            }
+        } catch (InterruptedException e) {
+            scheduler.shutdownNow();
+            Thread.currentThread().interrupt();
         }
+        System.out.println("Logger periódico detenido.");
+        logEstadoActual(); // Log final antes de terminar
+    }
+
+    public void logEstadoActual() {
+        String timestamp = LocalDateTime.now().format(formatter);
+        // Usar el método getCantidad generalizado
+        String estado = String.format("[%s] Estado: Preparación=%d, Tránsito=%d, Entregados=%d, Verificados=%d, Fallidos=%d | Total Generados=%d | Casilleros Malos=%d",
+                timestamp,
+                registro.getCantidad(EstadoPedido.PREPARACION),
+                registro.getCantidad(EstadoPedido.TRANSITO),
+                registro.getCantidad(EstadoPedido.ENTREGADO),
+                registro.getCantidad(EstadoPedido.VERIFICADO),
+                registro.getCantidad(EstadoPedido.FALLIDO),
+                registro.getTotalPedidosGenerados(),
+                matriz.getSizeFueraDeServicio() // Asume que MatrizCasilleros tiene este método
+        );
+        escribirArchivo(estado);
+        System.out.println(estado); // También mostrar en consola
     }
 
     public void logMensaje(String mensaje) {
-        if (writer != null) {
-             String timestamp = dtf.format(LocalDateTime.now());
-             writer.println(timestamp + " - " + mensaje);
-             writer.flush(); // Añadir flush explícito
-        } else {
-            System.out.println("LOG (consola): " + mensaje); // Fallback a consola
-        }
+        String timestamp = LocalDateTime.now().format(formatter);
+        escribirArchivo(String.format("[%s] Mensaje: %s", timestamp, mensaje));
+        System.out.println(String.format("[%s] %s", timestamp, mensaje)); // Opcional: mostrar en consola
     }
 
 
-    public void detenerLogPeriodico() {
-        if (scheduler != null && !scheduler.isShutdown()) {
-            scheduler.shutdown();
-            try {
-                if (!scheduler.awaitTermination(5, TimeUnit.SECONDS)) {
-                    scheduler.shutdownNow();
-                }
-            } catch (InterruptedException e) {
-                scheduler.shutdownNow();
-                Thread.currentThread().interrupt();
-            }
-        }
-         logMensaje("Logger periódico detenido.");
+    public void logFinal(long tiempoTotalMs) {
+        String timestamp = LocalDateTime.now().format(formatter);
+        escribirArchivo(String.format("[%s] --- Fin de la Simulación ---", timestamp));
+        escribirArchivo(String.format("[%s] Tiempo total de ejecución: %.2f segundos", timestamp, tiempoTotalMs / 1000.0));
+        logEstadoActual(); // Log del estado final detallado
+        escribirArchivo(String.format("[%s] --- Reporte Final Generado ---", timestamp));
     }
 
-     public void logFinal(MatrizCasilleros matriz, long tiempoTotalMs) {
-        logMensaje("--- INFORME FINAL ---");
-        logMensaje("Tiempo total de ejecución: " + tiempoTotalMs + " ms (" + tiempoTotalMs / 1000.0 + " segundos)");
-        logMensaje("Total Pedidos Fallidos: " + registro.getCantidadFallidos());
-        logMensaje("Total Pedidos Verificados: " + registro.getCantidadVerificados());
-        //logMensaje(matriz.getEstadisticas());
-        logMensaje("Pedidos restantes en Preparación: " + registro.getCantidadEnPreparacion());
-        logMensaje("Pedidos restantes en Tránsito: " + registro.getCantidadEnTransito());
-        logMensaje("Pedidos restantes Entregados: " + registro.getCantidadEntregados());
-        int totalFinal = registro.getCantidadFallidos() + registro.getCantidadVerificados();
-        logMensaje("Total Pedidos Procesados (Fallidos + Verificados): " + totalFinal);
-        logMensaje("--- FIN INFORME ---");
-
-        if (writer != null) {
-            writer.flush(); // Añadir flush explícito antes de cerrar
-            writer.close();
+    private synchronized void escribirArchivo(String mensaje) {
+        try (PrintWriter writer = new PrintWriter(new FileWriter(logFilePath, true))) {
+            writer.println(mensaje);
+        } catch (IOException e) {
+            System.err.println("Error al escribir en el archivo de log: " + e.getMessage());
         }
     }
 }

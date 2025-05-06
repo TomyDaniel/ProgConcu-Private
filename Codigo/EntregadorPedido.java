@@ -1,19 +1,21 @@
-import java.util.Random;
+
+import java.util.concurrent.ThreadLocalRandom;
 import java.util.concurrent.atomic.AtomicBoolean;
 
+
 public class EntregadorPedido implements Runnable {
-    private final Random random = new Random();
+    // ... (campos sin cambios)
     private final RegistroPedidos registro;
     private final AtomicBoolean running;
-    private final int demoraEntregador;
+    private final int demoraBaseMs;
     private final int variacionDemoraMs;
-    private static final int PROBABILIDAD_EXITO = 90; // 90% de éxito
+    private final double probabilidadFallo; // Ejemplo: 0.1 para 10% de fallo
 
-    public EntregadorPedido(RegistroPedidos registro, int demoraEntregador,
-                            int variacionDemoraMs, AtomicBoolean running) {
+    public EntregadorPedido(RegistroPedidos registro, int demoraBaseMs, int variacionDemoraMs, double probabilidadFallo, AtomicBoolean running) {
         this.registro = registro;
-        this.demoraEntregador = demoraEntregador;
+        this.demoraBaseMs = demoraBaseMs;
         this.variacionDemoraMs = variacionDemoraMs;
+        this.probabilidadFallo = probabilidadFallo;
         this.running = running;
     }
 
@@ -21,12 +23,16 @@ public class EntregadorPedido implements Runnable {
     public void run() {
         System.out.println(Thread.currentThread().getName() + " iniciado.");
         try {
-            while (running.get() || registro.getCantidadEnTransito()>0) {
-                Pedido pedido = registro.obtenerPedidoTransitoAleatorio();
-                if (pedido != null) {
-                    entregarPedido(pedido);
+            // Bucle principal: sigue mientras 'running' sea true O mientras queden pedidos por entregar
+            while (running.get() || registro.getCantidad(EstadoPedido.TRANSITO) > 0) {
+                // Si !running.get(), solo procesamos los restantes, si no hay, salimos.
+                if (!running.get() && registro.getCantidad(EstadoPedido.TRANSITO) == 0) {
+                    break;
                 }
+
+                procesarPedido();
                 aplicarDemora();
+
             }
         } catch (InterruptedException e) {
             Thread.currentThread().interrupt();
@@ -35,31 +41,48 @@ public class EntregadorPedido implements Runnable {
         System.out.println(Thread.currentThread().getName() + " terminado.");
     }
 
-    private void entregarPedido(Pedido pedido) {
-        pedido.lock();
-        try {
-            // Procesar con 90% de éxito
-            boolean exitoso = random.nextInt(100) < PROBABILIDAD_EXITO;
+    private void procesarPedido() {
+        // Obtener un pedido aleatorio de TRANSITO (no lo remueve aún)
+        Pedido pedido = registro.obtenerPedidoAleatorio(EstadoPedido.TRANSITO);
 
-            // Remover de tránsito primero
-            registro.removerDeTransito(pedido);
+        if (pedido != null) {
+            // Bloquear el pedido específico para procesarlo
+            pedido.lock();
+            try {
+                // Intentar remover el pedido específico de TRANSITO.
+                boolean removido = registro.removerPedido(pedido, EstadoPedido.TRANSITO); // <-- MODIFICADO: Usar método de RegistroPedidos
 
-            if (exitoso) {
-                registro.agregarAEntregados(pedido);
-            } else {
-                registro.agregarAFallidos(pedido);
+                if (removido) {
+                    // El pedido fue exitosamente "adquirido" por este hilo Entregador.
+                    // Simular intento de entrega
+                    boolean entregaExitosa = ThreadLocalRandom.current().nextDouble() >= probabilidadFallo;
+
+                    if (entregaExitosa) {
+                        // Mover a ENTREGADO
+                        registro.agregarPedido(pedido, EstadoPedido.ENTREGADO);
+                        System.out.println(Thread.currentThread().getName() + " entregó exitosamente " + pedido);
+                    } else {
+                        // Mover a FALLIDO
+                        registro.agregarPedido(pedido, EstadoPedido.FALLIDO);
+                        System.out.println(Thread.currentThread().getName() + " falló la entrega de " + pedido);
+                    }
+                }
+                // Si removido es false, otro hilo Entregador ya procesó este pedido. No hacemos nada.
+
+            } finally {
+                // Siempre liberar el lock del pedido
+                pedido.unlock();
             }
-        } finally {
-            pedido.unlock();
         }
+        // Si pedido es null, no hay nada en TRANSITO para entregar en este momento.
     }
 
+
     private void aplicarDemora() throws InterruptedException {
-        int variacion = 0;
-        if (variacionDemoraMs > 0) {
-            variacion = random.nextInt(variacionDemoraMs * 2 + 1) - variacionDemoraMs;
-        }
-        int demora = Math.max(0, demoraEntregador + variacion);
-        Thread.sleep(demora);
+        // ... (igual que en las otras clases)
+        int variacion = (variacionDemoraMs > 0)
+                ? ThreadLocalRandom.current().nextInt(-variacionDemoraMs, variacionDemoraMs + 1)
+                : 0;
+        Thread.sleep(Math.max(0, demoraBaseMs + variacion));
     }
 }
