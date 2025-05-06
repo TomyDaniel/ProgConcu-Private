@@ -42,25 +42,22 @@ public class PreparadorPedido implements Runnable {
     }
 
     private void procesarPedido() {
-        // Doble chequeo: verificar el límite antes de intentar ocupar casillero
+        // Doble chequeo
         if (registro.getTotalPedidosGenerados() >= totalPedidosAGenerar) {
             return; // No generar más si ya se alcanzó el límite
         }
 
         int casilleroId = matriz.ocuparCasilleroAleatorio();
         if (casilleroId != -1) {
-            // Solo crear y procesar si se obtuvo casillero y aún no se ha superado el límite
-            // (otra verificación por si acaso otro hilo incrementó justo ahora)
             if (registro.getTotalPedidosGenerados() < totalPedidosAGenerar) {
                 // Crear nuevo pedido y asignar casillero
                 Pedido nuevoPedido = new Pedido();
                 nuevoPedido.asignarCasillero(casilleroId);
 
-                // No es necesario lock/unlock aquí (eliminar comentarios)
                 try {
-                    // Usar el método generalizado con el estado PREPARACION
+                    // El pedido debe pasar al estado Preparacion
                     registro.agregarPedido(nuevoPedido, EstadoPedido.PREPARACION);
-                    // Incrementar el contador total de generados *después* de agregarlo exitosamente
+                    // Incrementar el contador total de generados
                     registro.incrementarTotalGenerados();
                     System.out.println(Thread.currentThread().getName() + " preparó " + nuevoPedido + " en casillero " + casilleroId + " (Total generados: " + registro.getTotalPedidosGenerados() + ")");
                 } finally {
@@ -83,7 +80,6 @@ public class PreparadorPedido implements Runnable {
     }
 
     private void aplicarDemora() throws InterruptedException {
-        // ... (sin cambios)
         int variacion = (variacionDemoraMs > 0)
                 ? ThreadLocalRandom.current().nextInt(-variacionDemoraMs, variacionDemoraMs + 1)
                 : 0;

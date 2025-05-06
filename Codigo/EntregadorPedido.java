@@ -9,13 +9,12 @@ public class EntregadorPedido implements Runnable {
     private final AtomicBoolean running;
     private final int demoraBaseMs;
     private final int variacionDemoraMs;
-    private final double probabilidadFallo; // Ejemplo: 0.1 para 10% de fallo
+    private static final int PROBABILIDAD_EXITO = 30; //85% por consigna
 
-    public EntregadorPedido(RegistroPedidos registro, int demoraBaseMs, int variacionDemoraMs, double probabilidadFallo, AtomicBoolean running) {
+    public EntregadorPedido(RegistroPedidos registro, int demoraBaseMs, int variacionDemoraMs, AtomicBoolean running) {
         this.registro = registro;
         this.demoraBaseMs = demoraBaseMs;
         this.variacionDemoraMs = variacionDemoraMs;
-        this.probabilidadFallo = probabilidadFallo;
         this.running = running;
     }
 
@@ -55,9 +54,9 @@ public class EntregadorPedido implements Runnable {
                 if (removido) {
                     // El pedido fue exitosamente "adquirido" por este hilo Entregador.
                     // Simular intento de entrega
-                    boolean entregaExitosa = ThreadLocalRandom.current().nextDouble() >= probabilidadFallo;
+                    boolean exitoso= ThreadLocalRandom.current().nextInt(0, 100) <= PROBABILIDAD_EXITO;
 
-                    if (entregaExitosa) {
+                    if (exitoso) {
                         // Mover a ENTREGADO
                         registro.agregarPedido(pedido, EstadoPedido.ENTREGADO);
                         System.out.println(Thread.currentThread().getName() + " entregó exitosamente " + pedido);
@@ -67,14 +66,12 @@ public class EntregadorPedido implements Runnable {
                         System.out.println(Thread.currentThread().getName() + " falló la entrega de " + pedido);
                     }
                 }
-                // Si removido es false, otro hilo Entregador ya procesó este pedido. No hacemos nada.
 
             } finally {
                 // Siempre liberar el lock del pedido
                 pedido.unlock();
             }
         }
-        // Si pedido es null, no hay nada en TRANSITO para entregar en este momento.
     }
 
 

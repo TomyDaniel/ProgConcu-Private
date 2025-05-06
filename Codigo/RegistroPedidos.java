@@ -4,7 +4,6 @@ import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.CopyOnWriteArrayList;
 import java.util.concurrent.atomic.AtomicInteger;
 import java.util.Random;
-// Eliminar import java.util.concurrent.locks.Lock; (ya no se usa)
 
 public class RegistroPedidos {
 
@@ -13,7 +12,6 @@ public class RegistroPedidos {
     // Contador para el número total de pedidos que se han iniciado a preparar
     private final AtomicInteger totalPedidosGenerados = new AtomicInteger(0);
     private final Random random = new Random();
-    // Eliminar el campo lock: private final Lock lock;
 
     public RegistroPedidos() {
         // Inicializar una lista para cada estado definido en el enum
@@ -22,25 +20,11 @@ public class RegistroPedidos {
         }
     }
 
-    // Método tomarPedido modificado para no usar el lock externo
-    public Pedido tomarPedido(EstadoPedido estado) {
-        // Ya no se usa lock.lock() / lock.unlock()
-        List<Pedido> lista = pedidosPorEstado.get(estado);
-        if (lista != null && !lista.isEmpty()) {
-            // Advertencia: remove(0) en CopyOnWriteArrayList es ineficiente si se llama a menudo.
-            // Considerar una estructura diferente si este es un cuello de botella.
-            // O si se necesita un elemento aleatorio, usar obtenerPedidoAleatorio y luego removerPedido.
-            try {
-                // Tomamos el primero por simplicidad, como estaba antes.
-                return lista.remove(0);
-            } catch (IndexOutOfBoundsException e) {
-                // Puede ocurrir si la lista se vacía concurrentemente.
-                return null;
-            }
-        }
-        return null; // No hay pedidos en ese estado
+    public boolean colasVacias(){
+        return this.getCantidad(EstadoPedido.PREPARACION) == 0 &&
+                this.getCantidad(EstadoPedido.TRANSITO) == 0 &&
+                this.getCantidad(EstadoPedido.ENTREGADO) == 0;
     }
-
 
     /**
      * Agrega un pedido a la lista del estado especificado.
@@ -68,7 +52,7 @@ public class RegistroPedidos {
 
     /**
      * Obtiene un pedido aleatorio de la lista del estado especificado.
-     * ¡Importante! Este método NO remueve el pedido de la lista.
+     * ¡Importante! Este metodo NO remueve el pedido de la lista.
      * @param estado El estado del cual obtener un pedido.
      * @return Un pedido aleatorio de esa lista, o null si la lista está vacía.
      */

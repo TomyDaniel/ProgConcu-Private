@@ -4,7 +4,7 @@ import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicBoolean;
-// import EstadoPedido; //<- Probablemente innecesario si está en el mismo paquete
+import java.util.stream.Collectors;
 
 public class Main {
 
@@ -27,9 +27,6 @@ public class Main {
     private static final int DEMORA_BASE_VER = 50;
     private static final int DEMORA_VAR_VER = 10;
 
-    private static final double PROBABILIDAD_FALLO_ENTREGA = 0.05; // 5%
-    private static final double PROBABILIDAD_FALLO_CASILLERO = 0.02; // 2%
-
     private static final long INTERVALO_LOG_MS = 1000; // Log cada segundo
     private static final String LOG_FILE_PATH = "simulacion_logistica.log";
     // -----------------------------------------
@@ -39,79 +36,82 @@ public class Main {
         System.out.println("Iniciando simulación de logística...");
         long startTime = System.currentTimeMillis();
 
-        // 1. Crear componentes compartidos
+        // Inicializar componentes
         AtomicBoolean running = new AtomicBoolean(true); // Flag para detener hilos
         MatrizCasilleros matriz = new MatrizCasilleros(FILAS_MATRIZ, COLUMNAS_MATRIZ);
         RegistroPedidos registro = new RegistroPedidos(); // La creación no cambia
+
+        //Inicializar el logger
         LoggerSistema logger = new LoggerSistema(LOG_FILE_PATH, registro, matriz);
-
-        // 2. Crear lista para guardar referencias a los Runnables
-        List<Runnable> tareas = new ArrayList<>();
-        List<Thread> hilos = new ArrayList<>(); //
-
-        // 3. Crear Runnables (trabajadores)
-        for (int i = 0; i < NUM_PREPARADORES; i++) {
-            tareas.add(new PreparadorPedido(registro, matriz, DEMORA_BASE_PREP, DEMORA_VAR_PREP, TOTAL_PEDIDOS_A_GENERAR, running));
-        }
-        for (int i = 0; i < NUM_DESPACHADORES; i++) {
-            tareas.add(new DespachadorPedido(registro, matriz, DEMORA_BASE_DESP, DEMORA_VAR_DESP, running));
-        }
-        for (int i = 0; i < NUM_ENTREGADORES; i++) {
-            tareas.add(new EntregadorPedido(registro, DEMORA_BASE_ENT, DEMORA_VAR_ENT, PROBABILIDAD_FALLO_ENTREGA, running));
-        }
-        for (int i = 0; i < NUM_VERIFICADORES; i++) {
-            // Pasar la matriz también al verificador
-            tareas.add(new VerificadorPedido(registro, matriz, DEMORA_BASE_VER, DEMORA_VAR_VER, PROBABILIDAD_FALLO_CASILLERO, running));
-        }
-
-
-        // 4. Iniciar Logger
         logger.iniciarLogPeriodico(INTERVALO_LOG_MS);
 
-        // 5. Crear e iniciar Hilos usando un ExecutorService (más moderno)
-        ExecutorService executor = Executors.newFixedThreadPool(
-                NUM_PREPARADORES + NUM_DESPACHADORES + NUM_ENTREGADORES + NUM_VERIFICADORES);
+        //Crear hilos
+        List<Thread> hilos = new ArrayList<>();
 
-        for (Runnable tarea : tareas) {
-            executor.submit(tarea); // Envía la tarea al pool de hilos
+        // 3 hilos preparadores
+        for (int i = 0; i < NUM_PREPARADORES; i++) {
+            Thread hilo = new Thread(new PreparadorPedido(registro, matriz, DEMORA_BASE_PREP, DEMORA_VAR_PREP, TOTAL_PEDIDOS_A_GENERAR, running));
+            hilo.setName("Preparador-" + i);
+            hilos.add(hilo);
         }
 
+        // 2 hilos despachadores
+        for (int i = 0; i < NUM_DESPACHADORES; i++) {
+            Thread hilo = new Thread(new DespachadorPedido(registro, matriz, DEMORA_BASE_DESP, DEMORA_VAR_DESP, running));
+            hilo.setName("Despachador-" + i);
+            hilos.add(hilo);
+        }
+
+        //3 hilos entregadores
+        for (int i = 0; i < NUM_ENTREGADORES; i++) {
+            Thread hilo = new Thread(new EntregadorPedido(registro, DEMORA_BASE_ENT, DEMORA_VAR_ENT, running));
+            hilo.setName("Entregador-" + i);
+            hilos.add(hilo);
+        }
+
+        //2 hilos verificadores
+        for (int i = 0; i < NUM_VERIFICADORES; i++) {
+            Thread hilo = new Thread(new VerificadorPedido(registro,DEMORA_BASE_VER, DEMORA_VAR_VER, running));
+            hilo.setName("Verificador-" + i);
+            hilos.add(hilo);
+        }
+
+        //Iniciar hilos
+        for (Thread hilo : hilos) {
+            hilo.start();
+        }
 
         // 6. Lógica de espera y terminación
         System.out.println("Esperando finalización de la generación y procesamiento...");
-        while (running.get()) {
-            boolean preparacionCompleta = registro.getTotalPedidosGenerados() >= TOTAL_PEDIDOS_A_GENERAR;
-            // Asegúrate que EstadoPedido está accesible (mismo paquete o importado)
-            boolean colasIntermediasVacias = registro.getCantidad(EstadoPedido.PREPARACION) == 0 &&
-                    registro.getCantidad(EstadoPedido.TRANSITO) == 0 &&
-                    registro.getCantidad(EstadoPedido.ENTREGADO) == 0;
-
-            if (preparacionCompleta && colasIntermediasVacias) {
-                running.set(false);
-                System.out.println("Condición de parada alcanzada. Señalando a hilos para terminar...");
-            } else {
-                try {
-                    Thread.sleep(500);
-                } catch (InterruptedException e) {
-                    Thread.currentThread().interrupt();
+        try{
+            while (running.get()) {
+                boolean preparacionCompleta = registro.getTotalPedidosGenerados() >= TOTAL_PEDIDOS_A_GENERAR;
+                boolean colasIntermediasVacias = registro.colasVacias();
+                Thread.sleep(500);
+                matriz.verificarEstadoCritico();
+                if (preparacionCompleta && colasIntermediasVacias) {
                     running.set(false);
-                    System.err.println("Hilo principal interrumpido. Terminando simulación.");
-                }
-            }
+                    System.out.println("Condición de parada alcanzada. Señalando a hilos para terminar...");
+                }}
+
+
+            } catch (InterruptedException e) {
+                Thread.currentThread().interrupt();
+                running.set(false);
+                System.err.println("Hilo principal interrumpido. Terminando simulación.");
+            } catch (MatrizLlenaException e){
+            System.out.println("Programa finalizado: todos los casilleros estan fuera de servicio");
+            running.set(false);
         }
 
 
-        // 7. Detener ExecutorService y esperar a que los hilos terminen
-        System.out.println("Deteniendo ExecutorService...");
-        executor.shutdown();
-        try {
-            if (!executor.awaitTermination(60, TimeUnit.SECONDS)) {
-                System.err.println("Los hilos no terminaron a tiempo. Forzando detención...");
-                executor.shutdownNow();
+        //Esperar a que todos los hilos terminen
+        for (Thread hilo : hilos) {
+            try{
+                hilo.join();
+            } catch (InterruptedException e) {
+                Thread.currentThread().interrupt();
             }
-        } catch (InterruptedException e) {
-            executor.shutdownNow();
-            Thread.currentThread().interrupt();
         }
 
         // 8. Detener Logger
@@ -133,7 +133,6 @@ public class Main {
         System.out.println("Pedidos Verificados exitosamente: " + registro.getCantidad(EstadoPedido.VERIFICADO));
         System.out.println("Pedidos con entrega Fallida: " + registro.getCantidad(EstadoPedido.FALLIDO));
         System.out.println("--- Estadísticas Finales de Casilleros ---");
-        System.out.println("Casilleros Fuera de Servicio: " + matriz.getSizeFueraDeServicio());
 
 
         logger.logFinal(duration);

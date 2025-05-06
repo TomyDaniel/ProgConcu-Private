@@ -10,18 +10,15 @@ import java.util.concurrent.atomic.AtomicBoolean;
 public class VerificadorPedido implements Runnable {
     // ... (campos sin cambios)
     private final RegistroPedidos registro;
-    private final MatrizCasilleros matriz; // Necesaria para marcar fuera de servicio
     private final AtomicBoolean running;
     private final int demoraBaseMs;
     private final int variacionDemoraMs;
-    private final double probFalloCasillero; // Probabilidad de marcar casillero como malo
+    private static final int PROBABILIDAD_EXITO = 30; //95% por consigna
 
-    public VerificadorPedido(RegistroPedidos registro, MatrizCasilleros matriz, int demoraBaseMs, int variacionDemoraMs, double probFalloCasillero, AtomicBoolean running) {
+    public VerificadorPedido(RegistroPedidos registro, int demoraBaseMs, int variacionDemoraMs, AtomicBoolean running) {
         this.registro = registro;
-        this.matriz = matriz;
         this.demoraBaseMs = demoraBaseMs;
         this.variacionDemoraMs = variacionDemoraMs;
-        this.probFalloCasillero = probFalloCasillero;
         this.running = running;
     }
 
@@ -31,11 +28,10 @@ public class VerificadorPedido implements Runnable {
         try {
             // Bucle principal: sigue mientras 'running' sea true O mientras queden pedidos por verificar
             while (running.get() || registro.getCantidad(EstadoPedido.ENTREGADO) > 0) {
-                // Si !running.get(), solo procesamos los restantes, si no hay, salimos.
+                //Verificacion por si algun hilo lo vuelve cero en el momento que entra
                 if (!running.get() && registro.getCantidad(EstadoPedido.ENTREGADO) == 0) {
                     break;
                 }
-
                 procesarPedido(); // Puede lanzar MatrizLlenaException
                 aplicarDemora();
 
@@ -43,67 +39,45 @@ public class VerificadorPedido implements Runnable {
         } catch (InterruptedException e) {
             Thread.currentThread().interrupt();
             System.out.println(Thread.currentThread().getName() + " interrumpido.");
-        } catch (MatrizLlenaException e) { // Capturar la excepción si la matriz se llena
-            System.err.println(Thread.currentThread().getName() + ": " + e.getMessage());
-            running.set(false); // Detener la simulación si la matriz está llena
         }
         System.out.println(Thread.currentThread().getName() + " terminado.");
     }
 
     private void procesarPedido() throws MatrizLlenaException { // Propagar excepción
         // Obtener un pedido aleatorio del estado ENTREGADO
-        // OJO: obtenerPedidoAleatorio NO lo saca de la lista. Hay que intentar removerlo después.
         Pedido pedido = registro.obtenerPedidoAleatorio(EstadoPedido.ENTREGADO);
 
         if (pedido != null) {
-            // Bloquear el pedido específico para procesarlo y evitar condiciones de carrera
-            // si otro Verificador lo eligiera al mismo tiempo.
             pedido.lock();
             try {
                 // Intentar remover el pedido específico de la lista ENTREGADO.
-                // Es posible que otro hilo lo haya removido entre obtenerPedidoAleatorio y aquí.
-                boolean removido = registro.removerPedido(pedido, EstadoPedido.ENTREGADO); // <-- MODIFICADO: Usar método de RegistroPedidos
+                boolean removido = registro.removerPedido(pedido, EstadoPedido.ENTREGADO);
 
                 if (removido) {
                     // El pedido fue exitosamente "adquirido" por este hilo Verificador.
-                    boolean casilleroOk = ThreadLocalRandom.current().nextDouble() >= probFalloCasillero;
+                    boolean exitoso= ThreadLocalRandom.current().nextInt(0, 100) <= PROBABILIDAD_EXITO;
                     int casilleroId = pedido.getCasilleroId(); // Obtener ID antes de decidir qué hacer
 
-                    if (casilleroOk) {
+                    if (exitoso) {
                         // Casillero OK, mover a VERIFICADO
                         registro.agregarPedido(pedido, EstadoPedido.VERIFICADO);
                         System.out.println(Thread.currentThread().getName() + " verificó OK " + pedido + " (Casillero: " + casilleroId + ")");
                     } else {
-                        // Casillero FALLÓ la verificación
-                        if (casilleroId != -1) {
-                            // Si tenía casillero, marcarlo como fuera de servicio
-                            matriz.marcarFueraDeServicio(casilleroId);
-                            // El pedido fallido no se re-agrega a ninguna lista (queda "perdido" o implícitamente descartado)
-                            System.out.println(Thread.currentThread().getName() + " verificó y marcó casillero " + casilleroId + " FUERA DE SERVICIO para " + pedido);
-                            // Verificar si la matriz está llena después de marcar
-                            matriz.verificarEstadoCritico(); // Puede lanzar MatrizLlenaException
-                        } else {
-                            // Caso raro: estaba ENTREGADO pero sin casillero asignado?
-                            System.out.println(Thread.currentThread().getName() + " intentó verificar " + pedido + " (fallo casillero) pero no tenía casillero asignado.");
-                            // Decisión: ¿Qué hacer con este pedido? Lo movemos a VERIFICADO igual para sacarlo del flujo? O a FALLIDO?
-                            // Moviéndolo a VERIFICADO como antes, aunque podría ser confuso.
-                            registro.agregarPedido(pedido, EstadoPedido.VERIFICADO);
-                        }
+                        // Casillero FAIL, mover a FALLIDO
+                        registro.agregarPedido(pedido, EstadoPedido.FALLIDO);
+                        System.out.println(Thread.currentThread().getName() + " verificó FAIL " + pedido + " (Casillero: " + casilleroId + ")");
+
                     }
                 }
-                // Si removido es false, significa que otro hilo Verificador ya procesó este pedido. No hacemos nada.
 
             } finally {
-                // Siempre liberar el lock del pedido, incluso si hubo excepciones (excepto MatrizLlenaException que se captura fuera)
                 pedido.unlock();
             }
         }
-        // Si pedido es null, no hay nada en ENTREGADO para verificar en este momento.
     }
 
 
     private void aplicarDemora() throws InterruptedException {
-        // ... (sin cambios)
         int variacion = (variacionDemoraMs > 0)
                 ? ThreadLocalRandom.current().nextInt(-variacionDemoraMs, variacionDemoraMs + 1)
                 : 0;

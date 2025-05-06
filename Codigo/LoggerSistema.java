@@ -49,8 +49,8 @@ public class LoggerSistema {
 
     public void logEstadoActual() {
         String timestamp = LocalDateTime.now().format(formatter);
-        // Usar el método getCantidad generalizado
-        String estado = String.format("[%s] Estado: Preparación=%d, Tránsito=%d, Entregados=%d, Verificados=%d, Fallidos=%d | Total Generados=%d | Casilleros Malos=%d",
+        // Usar el metodo getCantidad generalizado
+        String estado = String.format("[%s] Estado de Pedidos: Preparación=%d, Tránsito=%d, Entregados=%d, Verificados=%d, Fallidos=%d | Total Generados=%d | Casilleros Fuera de servicio=%d",
                 timestamp,
                 registro.getCantidad(EstadoPedido.PREPARACION),
                 registro.getCantidad(EstadoPedido.TRANSITO),
@@ -58,7 +58,7 @@ public class LoggerSistema {
                 registro.getCantidad(EstadoPedido.VERIFICADO),
                 registro.getCantidad(EstadoPedido.FALLIDO),
                 registro.getTotalPedidosGenerados(),
-                matriz.getSizeFueraDeServicio() // Asume que MatrizCasilleros tiene este método
+                matriz.getSizeFueraDeServicio() // Asume que MatrizCasilleros tiene este metodo
         );
         escribirArchivo(estado);
         System.out.println(estado); // También mostrar en consola
