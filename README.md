@@ -59,6 +59,7 @@ Después de modificar los valores, recompila el código antes de ejecutarlo de n
 ProgConcu/
 |-- Codigo/ # Código fuente Java de la simulación (.java)
 |-- Graficos/ # Diagramas de diseño (UML, secuencia, etc.) (.md)
+|-- Img/ # Imagenes de los diagramas de secuencia y diseño (jpeg)
 |-- TXT/ # Archivos de texto (posiblemente versiones antiguas o notas)
 |-- README.md # Este archivo de descripción
 |-- generate_sumary.py # Script Python para generar un resumen del proyecto
