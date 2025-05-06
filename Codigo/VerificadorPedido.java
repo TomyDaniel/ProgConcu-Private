@@ -1,23 +1,17 @@
-import java.util.Random; // Aunque no se use directamente, Random sí se usa en RegistroPedidos. ThreadLocalRandom sí se usa aquí.
-import java.util.concurrent.ThreadLocalRandom;
+import java.util.Random;
 import java.util.concurrent.atomic.AtomicBoolean;
-// Eliminar el import estático de EstadoPedido, no es necesario
-// import static tp1.ProgConcu.Codigo.RegistroPedidos.EstadoPedido; // Ajusta la ruta <-- ELIMINAR
-
-// No necesitas importar MatrizLlenaException, Pedido, RegistroPedidos, MatrizCasilleros si están en el mismo paquete.
-// Asegúrate de que EstadoPedido también esté en el mismo paquete (parece que sí).
 
 public class VerificadorPedido implements Runnable {
-    // ... (campos sin cambios)
+    private final Random random = new Random();
     private final RegistroPedidos registro;
     private final AtomicBoolean running;
-    private final int demoraBaseMs;
+    private final int demoraVerificador;
     private final int variacionDemoraMs;
-    private static final int PROBABILIDAD_EXITO = 30; //95% por consigna
+    private static final int PROBABILIDAD_EXITO = 95; //95% por consigna
 
     public VerificadorPedido(RegistroPedidos registro, int demoraBaseMs, int variacionDemoraMs, AtomicBoolean running) {
         this.registro = registro;
-        this.demoraBaseMs = demoraBaseMs;
+        this.demoraVerificador = demoraBaseMs;
         this.variacionDemoraMs = variacionDemoraMs;
         this.running = running;
     }
@@ -55,7 +49,7 @@ public class VerificadorPedido implements Runnable {
 
                 if (removido) {
                     // El pedido fue exitosamente "adquirido" por este hilo Verificador.
-                    boolean exitoso= ThreadLocalRandom.current().nextInt(0, 100) <= PROBABILIDAD_EXITO;
+                    boolean exitoso = random.nextInt(100) < PROBABILIDAD_EXITO;
                     int casilleroId = pedido.getCasilleroId(); // Obtener ID antes de decidir qué hacer
 
                     if (exitoso) {
@@ -76,11 +70,12 @@ public class VerificadorPedido implements Runnable {
         }
     }
 
-
     private void aplicarDemora() throws InterruptedException {
-        int variacion = (variacionDemoraMs > 0)
-                ? ThreadLocalRandom.current().nextInt(-variacionDemoraMs, variacionDemoraMs + 1)
-                : 0;
-        Thread.sleep(Math.max(0, demoraBaseMs + variacion));
+        int variacion = 0;
+        if (variacionDemoraMs > 0) {
+            variacion = random.nextInt(variacionDemoraMs * 2 + 1) - variacionDemoraMs;
+        }
+        int demora = Math.max(0, demoraVerificador + variacion);
+        Thread.sleep(demora);
     }
 }

@@ -1,19 +1,19 @@
 
-import java.util.concurrent.ThreadLocalRandom;
-import java.util.concurrent.atomic.AtomicBoolean;
 
+import java.util.concurrent.atomic.AtomicBoolean;
+import java.util.Random;
 
 public class EntregadorPedido implements Runnable {
-    // ... (campos sin cambios)
+    private final Random random = new Random();
     private final RegistroPedidos registro;
     private final AtomicBoolean running;
-    private final int demoraBaseMs;
+    private final int demoraEntregador;
     private final int variacionDemoraMs;
-    private static final int PROBABILIDAD_EXITO = 30; //85% por consigna
+    private static final int PROBABILIDAD_EXITO = 90; //90% por consigna
 
     public EntregadorPedido(RegistroPedidos registro, int demoraBaseMs, int variacionDemoraMs, AtomicBoolean running) {
         this.registro = registro;
-        this.demoraBaseMs = demoraBaseMs;
+        this.demoraEntregador = demoraBaseMs;
         this.variacionDemoraMs = variacionDemoraMs;
         this.running = running;
     }
@@ -53,8 +53,8 @@ public class EntregadorPedido implements Runnable {
 
                 if (removido) {
                     // El pedido fue exitosamente "adquirido" por este hilo Entregador.
-                    // Simular intento de entrega
-                    boolean exitoso= ThreadLocalRandom.current().nextInt(0, 100) <= PROBABILIDAD_EXITO;
+                    // Verificar con 95% de éxito
+                    boolean exitoso = random.nextInt(100) < PROBABILIDAD_EXITO;
 
                     if (exitoso) {
                         // Mover a ENTREGADO
@@ -68,7 +68,6 @@ public class EntregadorPedido implements Runnable {
                 }
 
             } finally {
-                // Siempre liberar el lock del pedido
                 pedido.unlock();
             }
         }
@@ -76,10 +75,11 @@ public class EntregadorPedido implements Runnable {
 
 
     private void aplicarDemora() throws InterruptedException {
-        // ... (igual que en las otras clases)
-        int variacion = (variacionDemoraMs > 0)
-                ? ThreadLocalRandom.current().nextInt(-variacionDemoraMs, variacionDemoraMs + 1)
-                : 0;
-        Thread.sleep(Math.max(0, demoraBaseMs + variacion));
+        int variacion = 0;
+        if (variacionDemoraMs > 0) {
+            variacion = random.nextInt(variacionDemoraMs * 2 + 1) - variacionDemoraMs;
+        }
+        int demora = Math.max(0, demoraEntregador + variacion);
+        Thread.sleep(demora);
     }
 }

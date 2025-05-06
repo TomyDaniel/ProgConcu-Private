@@ -1,33 +1,30 @@
 import java.util.ArrayList;
 import java.util.List;
-import java.util.concurrent.ExecutorService;
-import java.util.concurrent.Executors;
-import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicBoolean;
-import java.util.stream.Collectors;
 
 public class Main {
 
-    // --- Parámetros de Simulación (Ejemplo) ---
+    //Parametros de simulacion
     private static final int NUM_PREPARADORES = 3;
     private static final int NUM_DESPACHADORES = 2;
     private static final int NUM_ENTREGADORES = 3;
     private static final int NUM_VERIFICADORES = 2;
     private static final int TOTAL_PEDIDOS_A_GENERAR = 500; // Límite de pedidos
 
+    //Tamaño de la matriz de casilleros 10x20=200 casilleros
     private static final int FILAS_MATRIZ = 10;
     private static final int COLUMNAS_MATRIZ = 20;
 
-    private static final int DEMORA_BASE_PREP = 100;
-    private static final int DEMORA_VAR_PREP = 20;
-    private static final int DEMORA_BASE_DESP = 80;
-    private static final int DEMORA_VAR_DESP = 15;
-    private static final int DEMORA_BASE_ENT = 120;
-    private static final int DEMORA_VAR_ENT = 30;
-    private static final int DEMORA_BASE_VER = 50;
-    private static final int DEMORA_VAR_VER = 10;
+    //Tiempos de demora expresado en milisegundos
+    private static final int DEMORA_PREPARADOR = 100;
+    private static final int DEMORA_DESPACHADOR = 80;
+    private static final int DEMORA_ENTREGADOR = 120;
+    private static final int DEMORA_VERIFICADOR = 50;
 
-    private static final long INTERVALO_LOG_MS = 1000; // Log cada segundo
+    // Variación de demora (milisegundos +/-)
+    private static final int VARIACION_DEMORA = 40;
+
+    private static final long INTERVALO_LOG_MS = 200; // Log cada 200ms
     private static final String LOG_FILE_PATH = "simulacion_logistica.log";
     // -----------------------------------------
 
@@ -39,7 +36,7 @@ public class Main {
         // Inicializar componentes
         AtomicBoolean running = new AtomicBoolean(true); // Flag para detener hilos
         MatrizCasilleros matriz = new MatrizCasilleros(FILAS_MATRIZ, COLUMNAS_MATRIZ);
-        RegistroPedidos registro = new RegistroPedidos(); // La creación no cambia
+        RegistroPedidos registro = new RegistroPedidos();
 
         //Inicializar el logger
         LoggerSistema logger = new LoggerSistema(LOG_FILE_PATH, registro, matriz);
@@ -50,28 +47,28 @@ public class Main {
 
         // 3 hilos preparadores
         for (int i = 0; i < NUM_PREPARADORES; i++) {
-            Thread hilo = new Thread(new PreparadorPedido(registro, matriz, DEMORA_BASE_PREP, DEMORA_VAR_PREP, TOTAL_PEDIDOS_A_GENERAR, running));
+            Thread hilo = new Thread(new PreparadorPedido(registro, matriz, DEMORA_PREPARADOR, VARIACION_DEMORA, TOTAL_PEDIDOS_A_GENERAR, running));
             hilo.setName("Preparador-" + i);
             hilos.add(hilo);
         }
 
         // 2 hilos despachadores
         for (int i = 0; i < NUM_DESPACHADORES; i++) {
-            Thread hilo = new Thread(new DespachadorPedido(registro, matriz, DEMORA_BASE_DESP, DEMORA_VAR_DESP, running));
+            Thread hilo = new Thread(new DespachadorPedido(registro, matriz, DEMORA_DESPACHADOR, VARIACION_DEMORA, running));
             hilo.setName("Despachador-" + i);
             hilos.add(hilo);
         }
 
         //3 hilos entregadores
         for (int i = 0; i < NUM_ENTREGADORES; i++) {
-            Thread hilo = new Thread(new EntregadorPedido(registro, DEMORA_BASE_ENT, DEMORA_VAR_ENT, running));
+            Thread hilo = new Thread(new EntregadorPedido(registro, DEMORA_ENTREGADOR, VARIACION_DEMORA, running));
             hilo.setName("Entregador-" + i);
             hilos.add(hilo);
         }
 
         //2 hilos verificadores
         for (int i = 0; i < NUM_VERIFICADORES; i++) {
-            Thread hilo = new Thread(new VerificadorPedido(registro,DEMORA_BASE_VER, DEMORA_VAR_VER, running));
+            Thread hilo = new Thread(new VerificadorPedido(registro,DEMORA_VERIFICADOR, VARIACION_DEMORA, running));
             hilo.setName("Verificador-" + i);
             hilos.add(hilo);
         }
@@ -81,7 +78,7 @@ public class Main {
             hilo.start();
         }
 
-        // 6. Lógica de espera y terminación
+        //Lógica Finalizacion
         System.out.println("Esperando finalización de la generación y procesamiento...");
         try{
             while (running.get()) {
@@ -114,19 +111,17 @@ public class Main {
             }
         }
 
-        // 8. Detener Logger
+        // Detener Logger
         logger.detenerLogPeriodico();
 
-        // 9. Calcular tiempo y mostrar resultados finales
+        // Calcular tiempo y mostrar resultados finales
         long endTime = System.currentTimeMillis();
         long duration = endTime - startTime;
 
         System.out.println("\n--- Simulación Finalizada ---");
         System.out.printf("Tiempo total de ejecución: %.2f segundos\n", duration / 1000.0);
         System.out.println("--- Estadísticas Finales de Pedidos ---");
-
         System.out.println("Pedidos generados totales: " + registro.getTotalPedidosGenerados());
-        // Asegúrate que EstadoPedido está accesible (mismo paquete o importado)
         System.out.println("Pedidos en Preparación (al final): " + registro.getCantidad(EstadoPedido.PREPARACION));
         System.out.println("Pedidos en Tránsito (al final): " + registro.getCantidad(EstadoPedido.TRANSITO));
         System.out.println("Pedidos Entregados (pendientes de verificación): " + registro.getCantidad(EstadoPedido.ENTREGADO));

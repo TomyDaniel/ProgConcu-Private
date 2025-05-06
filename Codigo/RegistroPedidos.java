@@ -21,26 +21,16 @@ public class RegistroPedidos {
     }
 
     public boolean colasVacias(){
+        //Comprobamos que TODOS los pedidos ya no esten en las colas intermedias y solo esten en VERIFICADOS y FALLIDOS
         return this.getCantidad(EstadoPedido.PREPARACION) == 0 &&
                 this.getCantidad(EstadoPedido.TRANSITO) == 0 &&
                 this.getCantidad(EstadoPedido.ENTREGADO) == 0;
     }
 
-    /**
-     * Agrega un pedido a la lista del estado especificado.
-     * @param pedido El pedido a agregar.
-     * @param estado El estado al que pertenece el pedido.
-     */
     public void agregarPedido(Pedido pedido, EstadoPedido estado) {
         pedidosPorEstado.get(estado).add(pedido);
     }
 
-    /**
-     * Remueve un pedido de la lista del estado especificado.
-     * @param pedido El pedido a remover.
-     * @param estado El estado del que se debe remover el pedido.
-     * @return true si el pedido fue removido, false en caso contrario.
-     */
     public boolean removerPedido(Pedido pedido, EstadoPedido estado) { // Cambiado a boolean
         List<Pedido> lista = pedidosPorEstado.get(estado);
         if (lista != null) {
@@ -50,18 +40,11 @@ public class RegistroPedidos {
         return false; // No se pudo remover (lista no encontrada o pedido no presente)
     }
 
-    /**
-     * Obtiene un pedido aleatorio de la lista del estado especificado.
-     * ¡Importante! Este metodo NO remueve el pedido de la lista.
-     * @param estado El estado del cual obtener un pedido.
-     * @return Un pedido aleatorio de esa lista, o null si la lista está vacía.
-     */
     public Pedido obtenerPedidoAleatorio(EstadoPedido estado) {
         List<Pedido> lista = pedidosPorEstado.get(estado);
         if (lista == null || lista.isEmpty()) {
             return null;
         }
-        // nextInt es exclusivo en el límite superior, por lo que size() es correcto.
         int index = random.nextInt(lista.size());
         try {
             return lista.get(index);
@@ -72,30 +55,16 @@ public class RegistroPedidos {
         }
     }
 
-    /**
-     * Obtiene la cantidad de pedidos en un estado específico.
-     * @param estado El estado del cual consultar la cantidad.
-     * @return El número de pedidos en ese estado.
-     */
     public int getCantidad(EstadoPedido estado) {
         List<Pedido> lista = pedidosPorEstado.get(estado);
-        // Las listas se inicializan, así que no deberían ser null.
+        // Las listas se inicializan, así que no deberían ser null
         return (lista != null) ? lista.size() : 0;
     }
 
-    /**
-     * Incrementa el contador total de pedidos generados.
-     * Debe ser llamado por el Preparador cuando crea un nuevo pedido.
-     */
     public void incrementarTotalGenerados() {
         totalPedidosGenerados.incrementAndGet();
     }
 
-    /**
-     * Obtiene el número total de pedidos que han sido generados (iniciados).
-     * Usado para controlar el fin de la simulación.
-     * @return El contador total de pedidos generados.
-     */
     public int getTotalPedidosGenerados() {
         return totalPedidosGenerados.get();
     }

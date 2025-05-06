@@ -1,9 +1,9 @@
 
-import java.util.concurrent.ThreadLocalRandom;
+import java.util.Random;
 import java.util.concurrent.atomic.AtomicBoolean;
 
 public class PreparadorPedido implements Runnable {
-    // ... (campos sin cambios)
+    private final Random random = new Random();
     private final RegistroPedidos registro;
     private final MatrizCasilleros matriz;
     private final AtomicBoolean running;
@@ -53,16 +53,12 @@ public class PreparadorPedido implements Runnable {
                 // Crear nuevo pedido y asignar casillero
                 Pedido nuevoPedido = new Pedido();
                 nuevoPedido.asignarCasillero(casilleroId);
+                // El pedido debe pasar al estado Preparacion
+                registro.agregarPedido(nuevoPedido, EstadoPedido.PREPARACION);
+                // Incrementar el contador total de generados
+                registro.incrementarTotalGenerados();
+                System.out.println(Thread.currentThread().getName() + " preparó " + nuevoPedido + " en casillero " + casilleroId + " (Total generados: " + registro.getTotalPedidosGenerados() + ")");
 
-                try {
-                    // El pedido debe pasar al estado Preparacion
-                    registro.agregarPedido(nuevoPedido, EstadoPedido.PREPARACION);
-                    // Incrementar el contador total de generados
-                    registro.incrementarTotalGenerados();
-                    System.out.println(Thread.currentThread().getName() + " preparó " + nuevoPedido + " en casillero " + casilleroId + " (Total generados: " + registro.getTotalPedidosGenerados() + ")");
-                } finally {
-                    // No es necesario unlock aquí (eliminar comentario)
-                }
             } else {
                 // Si se alcanzó el límite justo después de ocupar el casillero, hay que liberarlo.
                 System.out.println(Thread.currentThread().getName() + " ocupó casillero " + casilleroId + " pero se alcanzó el límite antes de crear el pedido. Liberando...");
@@ -70,7 +66,6 @@ public class PreparadorPedido implements Runnable {
             }
         } else {
             System.out.println(Thread.currentThread().getName() + " no encontró casillero disponible.");
-            // Considerar una pequeña demora aquí para evitar spin-wait si la matriz está llena a menudo
             try {
                 Thread.sleep(50); // Pequeña pausa si no se encontró casillero
             } catch (InterruptedException e) {
@@ -80,9 +75,11 @@ public class PreparadorPedido implements Runnable {
     }
 
     private void aplicarDemora() throws InterruptedException {
-        int variacion = (variacionDemoraMs > 0)
-                ? ThreadLocalRandom.current().nextInt(-variacionDemoraMs, variacionDemoraMs + 1)
-                : 0;
-        Thread.sleep(Math.max(0, demoraPreparador + variacion));
+        int variacion = 0;
+        if (variacionDemoraMs > 0) {
+            variacion = random.nextInt(variacionDemoraMs * 2 + 1) - variacionDemoraMs;
+        }
+        int demora = Math.max(0, demoraPreparador + variacion);
+        Thread.sleep(demora);
     }
 }
