@@ -1,4 +1,25 @@
-# Informe de Análisis: Simulación Logística Concurrente
+# Simulación Logística Concurrente
+
+**Alumnos:**
+
+- Angulo Baez, Salvador
+- Arrieta, Gabriel
+- Bejarano, Kevin
+- Daniel, Tomas Gaston
+- Vigezzi, Ignacio
+
+
+**Grupo:**  
+*NoEsThreadSafe*
+
+**Institución Educativa**  
+*Universidad Nacional de Córdoba - Facultad de Ciencias Exactas, Físicas y Naturales*
+
+**Profesores**  
+*Luis Ventre*  
+*Mauricio Ludemann*
+*Agustin Carranza*
+
 
 ## 1. Introducción
 
