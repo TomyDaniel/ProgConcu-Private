@@ -1,95 +1,139 @@
-```mermaid
-sequenceDiagram
-    participant User as Usuario (Externo)
-    participant Prep1 as HiloPreparador_1
-    participant Matriz as MatrizCasilleros
-    participant Cas1 as Casillero_X
-    participant RegP as RegistroPedidos
-    participant Pedido1 as Pedido_A
-    participant Desp1 as HiloDespachador_1
+@startuml Diagrama de Secuencia - Flujo Exitoso Pedido
 
-    Note over User, Desp1: Sistema iniciado, hilos en ejecución.
+title Flujo Exitoso de un Pedido a través del Sistema
 
-    User ->> Prep1: (Implícito) Nuevo pedido generado/disponible
+actor Preparador as Prep <<Thread>>
+participant MatrizCasilleros as Matriz
+participant Pedido as P <<Object>>
+participant RegistroPedidos as Registro
+actor Despachador as Desp <<Thread>>
+actor Entregador as Ent <<Thread>>
+actor Verificador as Verif <<Thread>>
 
-    Note over Prep1: Intenta encontrar y ocupar un casillero (puede reintentar si falla)
+' == Preparación ==
+activate Prep
+Prep -> Matriz : ocuparCasilleroAleatorio()
+activate Matriz
+Matriz --> Prep : casilleroId
+deactivate Matriz
 
-    Prep1 ->> Matriz: lock() // Bloqueo para buscar
-    Prep1 ->> Matriz: buscarCasilleroVacio()
-    Matriz -->> Prep1: casilleroEncontrado(Cas1) // Asumiendo que se encontró uno
-    Prep1 ->> Matriz: unlock() // Desbloqueo post-búsqueda
+Prep -> P : create()
+activate P
+Prep -> P : asignarCasillero(casilleroId)
+Prep -> P : lock()
+note right of P : Bloqueo adquirido
+deactivate P
 
-    Prep1 ->> Cas1: lock() // Bloqueo del casillero específico
-    alt Casillero [Cas1] aún vacío?
-        Prep1 ->> Cas1: ocupar()
-        Prep1 ->> Cas1: incrementarContador()
-        Prep1 ->> Cas1: unlock()
-        Note over Prep1: Casillero encontrado y ocupado con éxito
+Prep -> Registro : agregarAPreparacion(P)
+activate Registro
+Registro --> Prep
+deactivate Registro
 
-        Prep1 ->> Pedido1: new Pedido(id_A)
-        Prep1 ->> Pedido1: asignarCasillero(Cas1)
+Prep -> Registro : incrementarPreparados()
+activate Registro
+Registro --> Prep
+deactivate Registro
 
-        Prep1 ->> RegP: lock(Preparacion) // Bloquear lista de preparación
-        Prep1 ->> RegP: agregarAPreparacion(Pedido1)
-        Prep1 ->> RegP: unlock(Preparacion)
+activate P
+Prep -> P : unlock()
+note right of P : Bloqueo liberado
+deactivate P
+deactivate Prep
+'... Preparador aplica demora y continua ...'
 
-        Prep1 ->> Prep1: dormir() // Espera configurable
+' == Despacho ==
+activate Desp
+Desp -> Registro : obtenerPedidoPreparacionAleatorio()
+activate Registro
+Registro --> Desp : P
+deactivate Registro
 
-    else Casillero [Cas1] ocupado por otro hilo
-        Prep1 ->> Cas1: unlock()
-        Note over Prep1: Conflicto, se debe buscar otro casillero (reintento no mostrado en detalle)
-    end
+Desp -> P : lock()
+activate P
+note right of P : Bloqueo adquirido
+deactivate P
 
-    Note over Prep1, Desp1: Si el pedido A se creó, ahora está en preparación...
+Desp -> Registro : removerDePreparacion(P)
+activate Registro
+Registro --> Desp
+deactivate Registro
 
-   
-    Desp1 ->> RegP: lock(Preparacion) // Bloquear lista
-    Desp1 ->> RegP: tomarDePreparacion() // Selecciona Pedido_A
-    RegP -->> Desp1: Pedido1
-    Desp1 ->> RegP: unlock(Preparacion)
+' Simulacion de éxito (85%)
+Desp -> Matriz : liberarCasillero(casilleroId)
+activate Matriz
+Matriz --> Desp
+deactivate Matriz
 
-    Desp1 ->> Pedido1: lock() // Bloquea el pedido para procesarlo
+Desp -> Registro : agregarATransito(P)
+activate Registro
+Registro --> Desp
+deactivate Registro
 
-    Desp1 ->> Desp1: verificarDatos() // Lógica interna
-    Note right of Desp1: Probabilidad 85% éxito, 15% fallo
+activate P
+Desp -> P : unlock()
+note right of P : Bloqueo liberado
+deactivate P
+deactivate Desp
+'... Despachador aplica demora y continua ...'
 
-    alt Verificación Exitosa (85%)
-        Desp1 ->> Pedido1: getCasilleroAsignado()
-        Pedido1 -->> Desp1: Cas1
+' == Entrega ==
+activate Ent
+Ent -> Registro : obtenerPedidoTransitoAleatorio()
+activate Registro
+Registro --> Ent : P
+deactivate Registro
 
-        Desp1 ->> Cas1: lock() // Bloquear casillero para liberarlo
-        Desp1 ->> Cas1: liberar()
-        Desp1 ->> Cas1: unlock()
+Ent -> P : lock()
+activate P
+note right of P : Bloqueo adquirido
+deactivate P
 
-        Desp1 ->> Pedido1: liberarCasillero() // Actualiza estado interno del pedido si es necesario
+Ent -> Registro : removerDeTransito(P)
+activate Registro
+Registro --> Ent
+deactivate Registro
 
-        Desp1 ->> RegP: lock(Transito) // Bloquear lista de tránsito
-        Desp1 ->> RegP: agregarATransito(Pedido1)
-        Desp1 ->> RegP: unlock(Transito)
+' Simulacion de éxito (90%)
+Ent -> Registro : agregarAEntregados(P)
+activate Registro
+Registro --> Ent
+deactivate Registro
 
-        Note over Desp1, RegP: Pedido A movido a Tránsito
+activate P
+Ent -> P : unlock()
+note right of P : Bloqueo liberado
+deactivate P
+deactivate Ent
+'... Entregador aplica demora y continua ...'
 
-    else Verificación Fallida (15%)
-        Desp1 ->> Pedido1: getCasilleroAsignado()
-        Pedido1 -->> Desp1: Cas1
+' == Verificación ==
+activate Verif
+Verif -> Registro : obtenerPedidoEntregadoAleatorio()
+activate Registro
+Registro --> Verif : P
+deactivate Registro
 
-        Desp1 ->> Cas1: lock()
-        Desp1 ->> Cas1: ponerFueraDeServicio()
-        Desp1 ->> Cas1: unlock()
+Verif -> P : lock()
+activate P
+note right of P : Bloqueo adquirido
+deactivate P
 
-        Desp1 ->> Pedido1: liberarCasillero()
+Verif -> Registro : removerDeEntregados(P)
+activate Registro
+Registro --> Verif
+deactivate Registro
 
-        Desp1 ->> RegP: lock(Fallidos) // Bloquear lista de fallidos
-        Desp1 ->> RegP: agregarAFallidos(Pedido1)
-        Desp1 ->> RegP: unlock(Fallidos)
+' Simulacion de éxito (95%)
+Verif -> Registro : agregarAVerificados(P)
+activate Registro
+Registro --> Verif
+deactivate Registro
 
-        Note over Desp1, RegP: Pedido A movido a Fallidos, Casillero X fuera de servicio
-    end
+activate P
+Verif -> P : unlock()
+note right of P : Bloqueo liberado
+deactivate P
+deactivate Verif
+'... Verificador aplica demora y continua ...'
 
-    Desp1 ->> Pedido1: unlock() // Libera el bloqueo del pedido
-
-    Desp1 ->> Desp1: dormir() // Espera configurable
-
-    Note over User, Desp1: Continúa el ciclo para otros pedidos y etapas...
-
-``` 
+@enduml

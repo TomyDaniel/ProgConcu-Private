@@ -1,156 +1,189 @@
-```mermaid
-classDiagram
-    class SistemaLogistica {
-        +MatrizCasilleros matriz
-        +RegistroPedidos registros
-        +List<Thread> hilosPreparadores
-        +List<Thread> hilosDespachadores
-        +List<Thread> hilosEntregadores
-        +List<Thread> hilosVerificadores
-        +Logger logger
-        +iniciarSimulacion()
-        +detenerSimulacion()
-        +generarReporteFinal()
-    }
 
-    class MatrizCasilleros {
-        -Casillero[][] casilleros
-        -Lock lockMatriz  // Lock general o por filas/columnas
-        +buscarCasilleroVacio() Casillero
-        +getCasillero(int fila, int col) Casillero
-        +actualizarEstadoCasillero(Casillero c, EstadoCasillero estado)
-        +getEstadisticasCasilleros() String
-    }
+@startuml Diagrama de Clases - Simulacion Logistica
 
-    class Casillero {
-        -int id  // o posicion (fila, col)
-        -EstadoCasillero estado
-        -int contadorUso
-        -Lock lockCasillero // Lock individual
-        +ocupar()
-        +liberar()
-        +ponerFueraDeServicio()
-        +getEstado() EstadoCasillero
-        +incrementarContador()
-        +getId() int
-    }
+' --- Estilos (Opcional) ---
+skinparam classAttributeIconSize 0
+hide empty members
 
-    class RegistroPedidos {
-        -List<Pedido> pedidosEnPreparacion
-        -List<Pedido> pedidosEnTransito
-        -List<Pedido> pedidosEntregados
-        -List<Pedido> pedidosFallidos
-        -List<Pedido> pedidosVerificados
-        -Lock lockPreparacion
-        -Lock lockTransito
-        -Lock lockEntregados
-        -Lock lockFallidos
-        -Lock lockVerificados
-        +agregarAPreparacion(Pedido p)
-        +tomarDePreparacion() Pedido
-        +agregarATransito(Pedido p)
-        +tomarDeTransito() Pedido
-        +agregarAEntregados(Pedido p)
-        +tomarDeEntregados() Pedido
-        +agregarAFallidos(Pedido p)
-        +agregarAVerificados(Pedido p)
-        +getCantidadFallidos() int
-        +getCantidadVerificados() int
-    }
+' --- Clases y Enums ---
+enum EstadoCasillero {
+  VACIO
+  OCUPADO
+  FUERA_DE_SERVICIO
+}
 
-    class Pedido {
-        -int id
-        -EstadoPedido estadoActual // Opcional, manejado por listas
-        -Casillero casilleroAsignado // Referencia mientras está en preparación
-        -Lock lockPedido // Para asegurar que solo un hilo lo procese a la vez
-        +getId() int
-        +asignarCasillero(Casillero c)
-        +getCasilleroAsignado() Casillero
-        +liberarCasillero()
-    }
+class Casillero {
+  - estado : EstadoCasillero
+  - vecesOcupado : int
+  + ocupar()
+  + liberar()
+  + marcarFueraDeServicio()
+  + getEstado() : EstadoCasillero
+  + getVecesOcupado() : int
+}
 
-    class ProcesoBase {
-        <<Abstract>>
-        #String nombre
-        #RegistroPedidos registroPedidos
-        #MatrizCasilleros matrizCasilleros // Si es necesario
-        #int demoraBaseMs
-        +run() void
-        #dormir() void // Simula demora aleatoria/fija
-    }
+class Pedido {
+  - {static} ID_GENERATOR : AtomicInteger
+  - id : int
+  - casilleroId : int
+  - lock : ReentrantLock
+  + Pedido()
+  + asignarCasillero(int)
+  + lock()
+  + unlock()
+  + getId() : int
+  + getCasilleroId() : int
+}
 
-    class PreparadorPedido {
-        +PreparadorPedido(RegistroPedidos reg, MatrizCasilleros mat, int demora)
-        +run() void // Lógica de preparación
-    }
+class MatrizCasilleros {
+  - matriz : Casillero[][]
+  - filas : int
+  - columnas : int
+  - rwLock : ReentrantReadWriteLock
+  + MatrizCasilleros(int, int)
+  + ocuparCasilleroAleatorio() : int
+  + liberarCasillero(int)
+  + marcarFueraDeServicio(int)
+  + getSizeFueraDeServicio() : int
+  + verificarEstadoCritico()
+}
 
-    class DespachadorPedido {
-        +DespachadorPedido(RegistroPedidos reg, MatrizCasilleros mat, int demora)
-        +run() void // Lógica de despacho
-    }
+class MatrizLlenaException extends RuntimeException {
+  + MatrizLlenaException(String)
+}
 
-    class EntregadorPedido {
-        +EntregadorPedido(RegistroPedidos reg, int demora)
-        +run() void // Lógica de entrega
-    }
+class RegistroPedidos {
+  - pedidosPreparacion : List<Pedido>
+  - pedidosTransito : List<Pedido>
+  - pedidosEntregados : List<Pedido>
+  - pedidosFallidos : List<Pedido>
+  - pedidosVerificados : List<Pedido>
+  - preparadosCount : AtomicInteger
+  + agregarAPreparacion(Pedido)
+  + agregarATransito(Pedido)
+  + agregarAEntregados(Pedido)
+  + agregarAFallidos(Pedido)
+  + agregarAVerificados(Pedido)
+  + removerDePreparacion(Pedido)
+  + removerDeTransito(Pedido)
+  + removerDeEntregados(Pedido)
+  + obtenerPedidoPreparacionAleatorio() : Pedido
+  + obtenerPedidoTransitoAleatorio() : Pedido
+  + obtenerPedidoEntregadoAleatorio() : Pedido
+  + incrementarPreparados()
+  + getCantidad...() : int
+}
+note right of RegistroPedidos : Usa CopyOnWriteArrayList para concurrencia
 
-    class VerificadorPedido {
-        +VerificadorPedido(RegistroPedidos reg, int demora)
-        +run() void // Lógica de verificación
-    }
+interface Runnable <<interface>>
 
-    class Logger {
-        -String archivoLog
-        -RegistroPedidos registroPedidos
-        -Timer timerLogPeriodico
-        +iniciarLogPeriodico(long intervaloMs)
-        +detenerLogPeriodico()
-        +logEstadoActual()
-        +logFinal(MatrizCasilleros mat, long tiempoTotalMs)
-        -escribirArchivo(String mensaje)
-    }
+abstract class TrabajadorLogistica implements Runnable {
+ # registro : RegistroPedidos
+ # running : AtomicBoolean
+ # demoraBaseMs : int
+ # variacionDemoraMs : int
+ # random : Random
+ + run()
+ # procesarPedido(Pedido)
+ # aplicarDemora()
+}
 
-    class EstadoCasillero {
-        <<enumeration>>
-        VACIO
-        OCUPADO
-        FUERA_DE_SERVICIO
-    }
+class PreparadorPedido {
+  - matriz : MatrizCasilleros
+  - totalPedidosAGenerar : int
+  + run()
+  - procesarPedido() ' Sobrescribe lógica
+}
+note right of PreparadorPedido : Crea Pedidos
 
-    class EstadoPedido {
-        <<enumeration>>
-        EN_PREPARACION
-        EN_TRANSITO
-        ENTREGADO
-        FALLIDO
-        VERIFICADO
-    }
+class DespachadorPedido {
+  - matriz : MatrizCasilleros
+  + run()
+  - procesarPedido(Pedido) ' Sobrescribe lógica
+}
 
-    SistemaLogistica "1" *-- "1" MatrizCasilleros : contiene >
-    SistemaLogistica "1" *-- "1" RegistroPedidos : contiene >
-    SistemaLogistica "1" *-- "1" Logger : usa >
-    SistemaLogistica "1" *-- "3..*" PreparadorPedido : gestiona >
-    SistemaLogistica "1" *-- "2" DespachadorPedido : gestiona >
-    SistemaLogistica "1" *-- "3" EntregadorPedido : gestiona >
-    SistemaLogistica "1" *-- "2" VerificadorPedido : gestiona >
+class EntregadorPedido {
+  + run()
+  - procesarPedido(Pedido) ' Sobrescribe lógica
+}
 
-    MatrizCasilleros "1" *-- "N" Casillero : contiene >
+class VerificadorPedido {
+  + run()
+  - procesarPedido(Pedido) ' Sobrescribe lógica
+}
 
-    RegistroPedidos "1" *-- "*" Pedido : gestiona >
+class LoggerSistema {
+  - registro : RegistroPedidos
+  - archivoLog : String
+  - scheduler : ScheduledExecutorService
+  + iniciarLogPeriodico(long)
+  + logMensaje(String)
+  + detenerLogPeriodico()
+  + logFinal(MatrizCasilleros, long)
+}
 
-    PreparadorPedido --|> ProcesoBase
-    DespachadorPedido --|> ProcesoBase
-    EntregadorPedido --|> ProcesoBase
-    VerificadorPedido --|> ProcesoBase
+class Main {
+  - {static} MATRIZ_FILAS : int
+  - {static} MATRIZ_COLUMNAS : int
+  - {static} TOTAL_PEDIDOS : int
+  - {static} DEMORA_... : int
+  - {static} VARIACION_DEMORA : int
+  + {static} main(String[])
+  - {static} imprimirEstadisticas(RegistroPedidos)
+}
 
-    ProcesoBase "1" *-- "1" RegistroPedidos : usa >
-    PreparadorPedido "1" *-- "1" MatrizCasilleros : usa >
-    DespachadorPedido "1" *-- "1" MatrizCasilleros : usa >
 
-    Pedido "1" -- "0..1" Casillero : ocupa >
+' --- Relaciones ---
+Main ..> MatrizCasilleros : crea y usa >
+Main ..> RegistroPedidos : crea y usa >
+Main ..> LoggerSistema : crea y usa >
+Main ..> PreparadorPedido : crea e inicia >
+Main ..> DespachadorPedido : crea e inicia >
+Main ..> EntregadorPedido : crea e inicia >
+Main ..> VerificadorPedido : crea e inicia >
+Main ..> AtomicBoolean : usa >
+Main ..> Thread : usa >
 
-    Casillero -- EstadoCasillero
+MatrizCasilleros "1" o-- "*" Casillero : contiene >
+MatrizCasilleros ..> MatrizLlenaException : lanza >
+MatrizCasilleros ..> EstadoCasillero : usa
 
-    Logger "1" *-- "1" RegistroPedidos : monitorea >
+Casillero *-- EstadoCasillero : tiene un
 
-```
+RegistroPedidos "1" o-- "*" Pedido : gestiona >
+
+Runnable <|.. PreparadorPedido
+Runnable <|.. DespachadorPedido
+Runnable <|.. EntregadorPedido
+Runnable <|.. VerificadorPedido
+' Alternativa: Mostrar herencia de una clase base abstracta (si se usa)
+' TrabajadorLogistica <|-- PreparadorPedido
+' TrabajadorLogistica <|-- DespachadorPedido
+' TrabajadorLogistica <|-- EntregadorPedido
+' TrabajadorLogistica <|-- VerificadorPedido
+' Runnable <|.. TrabajadorLogistica
+
+
+PreparadorPedido ..> RegistroPedidos : usa
+PreparadorPedido ..> MatrizCasilleros : usa
+PreparadorPedido ..> Pedido : crea
+PreparadorPedido ..> AtomicBoolean : usa
+
+DespachadorPedido ..> RegistroPedidos : usa
+DespachadorPedido ..> MatrizCasilleros : usa
+DespachadorPedido ..> Pedido : usa
+DespachadorPedido ..> AtomicBoolean : usa
+
+EntregadorPedido ..> RegistroPedidos : usa
+EntregadorPedido ..> Pedido : usa
+EntregadorPedido ..> AtomicBoolean : usa
+
+VerificadorPedido ..> RegistroPedidos : usa
+VerificadorPedido ..> Pedido : usa
+VerificadorPedido ..> AtomicBoolean : usa
+
+LoggerSistema ..> RegistroPedidos : usa
+LoggerSistema ..> MatrizCasilleros : usa (en logFinal)
+
+
+@enduml
