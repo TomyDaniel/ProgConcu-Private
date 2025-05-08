@@ -1,0 +1,46 @@
+Consideraciones para MatrizCasilleros con Locks por Casillero:
+Eliminación del ReentrantReadWriteLock Global: El rwLock, readLock y writeLock se eliminan de MatrizCasilleros.
+
+ocuparCasilleroAleatorio():
+Itera sobre las posiciones aleatorias.
+Para cada Casillero, llama a casilleroActual.intentarOcupar(). Este método ahora es responsable de su propio bloqueo.
+Si intentarOcupar() tiene éxito (devuelve true), se ha encontrado y ocupado un casillero.
+Múltiples hilos pueden estar ejecutando este método simultáneamente. Si dos hilos intentan ocupar el mismo casillero exactamente al mismo tiempo, 
+el lock interno del Casillero serializará sus intentos sobre ese casillero específico. Si intentan ocupar diferentes casilleros, pueden proceder en paralelo.
+
+liberarCasillero() y marcarFueraDeServicio():
+Obtienen el Casillero específico y llaman a su método correspondiente (intentarLiberar(), marcarFueraDeServicioConLock()), que maneja el bloqueo internamente.
+Múltiples hilos pueden liberar o marcar diferentes casilleros en paralelo.
+getSizeFueraDeServicio() y verificarEstadoCritico():
+Cuando getSizeFueraDeServicio llama a matriz[i][j].getEstado(), el Casillero individual bloqueará brevemente para devolver su estado. 
+Esto significa que mientras un hilo cuenta, otros hilos podrían estar modificando otros casilleros. 
+El conteo será una "instantánea" aproximada pero consistente para cada casillero en el momento en que se lee su estado.
+La consistencia general del conteo es buena, 
+pero la operación de contar en sí misma podría ser un poco más lenta si hay mucha actividad de bloqueo/desbloqueo en los casilleros individuales durante el conteo, 
+en comparación con un solo readLock global.
+
+Ventajas del Bloqueo a Nivel de Casillero:
+Mayor Paralelismo de Escritura: Múltiples hilos pueden modificar (ocupar, liberar, marcar fuera de servicio) diferentes casilleros simultáneamente. 
+Este era el objetivo principal.
+
+Reducción de Contención Global: Se evita que un único writeLock para toda la matriz se convierta en un cuello de botella si las operaciones de escritura 
+son frecuentes y distribuidas entre diferentes casilleros.
+
+Desventajas Potenciales y Consideraciones:
+Overhead de Múltiples Locks: Gestionar un lock por cada casillero introduce un pequeño overhead de memoria y CPU por cada lock. 
+Para una matriz muy grande, esto podría ser notable.
+Escaneo Secuencial en ocuparCasilleroAleatorio: Aunque las operaciones de intento de ocupación en casilleros diferentes pueden ser paralelas, 
+el bucle en ocuparCasilleroAleatorio que prueba las posiciones sigue siendo, en cierto modo, un escaneo. Si la matriz está muy llena, muchos hilos podrían estar escaneando 
+y fallando repetidamente, lo cual no es ideal. Sin embargo, la contención por el lock solo ocurre si dos hilos intentan el mismo casillero.
+Posibilidad de Deadlock (si se hace incorrectamente): Si tuvieras operaciones que necesitaran bloquear múltiples casilleros en un orden específico, 
+tendrías que ser muy cuidadoso para evitar deadlocks (por ejemplo, siempre bloqueando los casilleros en un orden canónico, como por ID). 
+
+
+Lectura de Múltiples Estados (getSizeFueraDeServicio): Como se mencionó, 
+leer el estado de muchos casilleros individualmente bloqueados puede ser un poco menos eficiente para esa operación específica 
+que una lectura global con readLock, pero es el precio a pagar por permitir escrituras concurrentes en otros casilleros.
+
+Conclusión del Cambio:
+Este cambio alinea el diseño con la idea de permitir que diferentes hilos "escriban" (modifiquen estados de casilleros) en diferentes partes de la matriz simultáneamente, 
+lo cual debería mejorar la concurrencia general del sistema si la contención por el acceso a la matriz era un factor limitante. Es un compromiso entre granularidad de bloqueo, 
+complejidad y rendimiento.

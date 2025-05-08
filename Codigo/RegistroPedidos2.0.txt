@@ -1,91 +1,91 @@
 import java.util.ArrayList;
-import java.util.HashMap; // Usaremos HashMap estándar
+import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Random;
 import java.util.concurrent.atomic.AtomicInteger;
-
+import java.util.concurrent.locks.Lock;
+import java.util.concurrent.locks.ReentrantLock; // Importar ReentrantLock
 
 public class RegistroPedidos {
 
-    // Usaremos HashMap estándar, no concurrente
     private final Map<EstadoPedido, List<Pedido>> pedidosPorEstado = new HashMap<>();
     private final AtomicInteger totalPedidosGenerados = new AtomicInteger(0);
     private final Random random = new Random();
-
-    // Objeto de bloqueo para sincronizar el acceso a pedidosPorEstado
-    private final Object lock = new Object();
+    private final Lock reentrantLock = new ReentrantLock(); // Usar ReentrantLock
 
     public RegistroPedidos() {
-        // Inicializar una lista ArrayList estándar para cada estado
-        // Esta inicialización no necesita sincronización si se hace solo en el constructor
-        // y el objeto RegistroPedidos no se comparte entre hilos hasta que esté completamente construido.
         for (EstadoPedido estado : EstadoPedido.values()) {
             pedidosPorEstado.put(estado, new ArrayList<>());
         }
     }
 
     public boolean colasVacias() {
-        synchronized (lock) { // Sincronizar la lectura de múltiples estados
+        reentrantLock.lock();
+        try {
             return this.getCantidadInterno(EstadoPedido.PREPARACION) == 0 &&
                    this.getCantidadInterno(EstadoPedido.TRANSITO) == 0 &&
                    this.getCantidadInterno(EstadoPedido.ENTREGADO) == 0;
+        } finally {
+            reentrantLock.unlock();
         }
     }
 
     public void agregarPedido(Pedido pedido, EstadoPedido estado) {
-        synchronized (lock) {
+        reentrantLock.lock();
+        try {
             List<Pedido> lista = pedidosPorEstado.get(estado);
-            // Es buena práctica verificar si la lista existe, aunque en este diseño siempre debería.
             if (lista != null) {
                 lista.add(pedido);
             } else {
-                // Manejar caso improbable: la lista para el estado no fue inicializada.
                 System.err.println("Error: Lista no encontrada para el estado: " + estado);
             }
+        } finally {
+            reentrantLock.unlock();
         }
     }
 
     public boolean removerPedido(Pedido pedido, EstadoPedido estado) {
-        synchronized (lock) {
+        reentrantLock.lock();
+        try {
             List<Pedido> lista = pedidosPorEstado.get(estado);
             if (lista != null) {
-                return lista.remove(pedido); // remove() en ArrayList estándar devuelve boolean
+                return lista.remove(pedido);
             }
             return false;
+        } finally {
+            reentrantLock.unlock();
         }
     }
 
     public Pedido obtenerPedidoAleatorio(EstadoPedido estado) {
-        synchronized (lock) {
+        reentrantLock.lock();
+        try {
             List<Pedido> lista = pedidosPorEstado.get(estado);
             if (lista == null || lista.isEmpty()) {
                 return null;
             }
-            // La operación completa (size y get) debe estar dentro del bloque sincronizado
-            // para evitar IndexOutOfBoundsException debido a modificaciones concurrentes.
             int index = random.nextInt(lista.size());
             return lista.get(index);
+        } finally {
+            reentrantLock.unlock();
         }
     }
 
-    // Método interno para ser llamado desde bloques sincronizados
     private int getCantidadInterno(EstadoPedido estado) {
+        // Este método asume que el lock ya está adquirido por el llamador
         List<Pedido> lista = pedidosPorEstado.get(estado);
         return (lista != null) ? lista.size() : 0;
     }
 
     public int getCantidad(EstadoPedido estado) {
-        synchronized (lock) {
+        reentrantLock.lock();
+        try {
             return getCantidadInterno(estado);
+        } finally {
+            reentrantLock.unlock();
         }
     }
 
-    public void incrementarTotalGenerados() {
-        totalPedidosGenerados.incrementAndGet();
-    }
-
-    public int getTotalPedidosGenerados() {
-        return totalPedidosGenerados.get();
-    }
+    // ... métodos de totalPedidosGenerados sin cambios ...
 }

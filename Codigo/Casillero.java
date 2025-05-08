@@ -1,38 +1,75 @@
+// Casillero.java
+import java.util.concurrent.locks.Lock;
+import java.util.concurrent.locks.ReentrantLock;
 
 public class Casillero {
 
     private EstadoCasillero estado;
     private int vecesOcupado;
+    private final Lock lock = new ReentrantLock(); // Lock individual para este casillero
 
     public Casillero() {
         this.estado = EstadoCasillero.VACIO;
         this.vecesOcupado = 0;
     }
 
-    public void ocupar() throws IllegalStateException {
-        if (estado != EstadoCasillero.VACIO) {
-            throw new IllegalStateException("No se puede ocupar un casillero que no está vacío");
+    // El método ocupar ahora manejará su propio bloqueo
+    public boolean intentarOcupar() { // Cambiado para devolver boolean y no lanzar excepción aquí
+        lock.lock();
+        try {
+            if (estado == EstadoCasillero.VACIO) {
+                estado = EstadoCasillero.OCUPADO;
+                vecesOcupado++;
+                return true; // Ocupación exitosa
+            }
+            return false; // No se pudo ocupar (ya estaba ocupado, etc.)
+        } finally {
+            lock.unlock();
         }
-        estado = EstadoCasillero.OCUPADO;
-        vecesOcupado++;
     }
 
-    public void liberar() throws IllegalStateException{
-        if (estado != EstadoCasillero.OCUPADO) {
-            throw new IllegalStateException("No se puede liberar un casillero que no está ocupado");
+    // El método liberar también manejará su propio bloqueo
+    public boolean intentarLiberar() { // Cambiado para devolver boolean
+        lock.lock();
+        try {
+            if (estado == EstadoCasillero.OCUPADO) {
+                estado = EstadoCasillero.VACIO;
+                return true;
+            }
+            return false;
+        } finally {
+            lock.unlock();
         }
-        estado = EstadoCasillero.VACIO;
     }
 
-    public void marcarFueraDeServicio() {
-        estado = EstadoCasillero.FUERA_DE_SERVICIO;
+    // Marcar fuera de servicio también con su lock
+    public void marcarFueraDeServicioConLock() { // Renombrado para claridad si mantienes el otro
+        lock.lock();
+        try {
+            estado = EstadoCasillero.FUERA_DE_SERVICIO;
+        } finally {
+            lock.unlock();
+        }
     }
 
     public EstadoCasillero getEstado() {
-        return estado;
+        // Para lecturas simples del estado, podrías considerar si el lock es estrictamente
+        // necesario si el estado se actualiza siempre bajo lock.
+        // Por consistencia y si hay múltiples campos que leer, es más seguro con lock.
+        lock.lock();
+        try {
+            return estado;
+        } finally {
+            lock.unlock();
+        }
     }
 
     public int getVecesOcupado() {
-        return vecesOcupado;
+        lock.lock();
+        try {
+            return vecesOcupado;
+        } finally {
+            lock.unlock();
+        }
     }
 }
