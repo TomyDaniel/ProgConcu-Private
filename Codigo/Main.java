@@ -48,28 +48,28 @@ public class Main {
         // 3 hilos preparadores
         for (int i = 0; i < NUM_PREPARADORES; i++) {
             Thread hilo = new Thread(new PreparadorPedido(registro, matriz, DEMORA_PREPARADOR, VARIACION_DEMORA, TOTAL_PEDIDOS_A_GENERAR, running));
-            hilo.setName("Preparador-" + i);
+            hilo.setName("Preparador: " + i);
             hilos.add(hilo);
         }
 
         // 2 hilos despachadores
         for (int i = 0; i < NUM_DESPACHADORES; i++) {
             Thread hilo = new Thread(new DespachadorPedido(registro, matriz, DEMORA_DESPACHADOR, VARIACION_DEMORA, running));
-            hilo.setName("Despachador-" + i);
+            hilo.setName("Despachador: " + i);
             hilos.add(hilo);
         }
 
         //3 hilos entregadores
         for (int i = 0; i < NUM_ENTREGADORES; i++) {
             Thread hilo = new Thread(new EntregadorPedido(registro, DEMORA_ENTREGADOR, VARIACION_DEMORA, running));
-            hilo.setName("Entregador-" + i);
+            hilo.setName("Entregador: " + i);
             hilos.add(hilo);
         }
 
         //2 hilos verificadores
         for (int i = 0; i < NUM_VERIFICADORES; i++) {
             Thread hilo = new Thread(new VerificadorPedido(registro,DEMORA_VERIFICADOR, VARIACION_DEMORA, running));
-            hilo.setName("Verificador-" + i);
+            hilo.setName("Verificador: " + i);
             hilos.add(hilo);
         }
 
