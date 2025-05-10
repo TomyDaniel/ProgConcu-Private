@@ -1,22 +1,18 @@
-import java.util.concurrent.atomic.AtomicInteger;
-import java.util.concurrent.locks.ReentrantLock;
 public class Pedido {
-    private static final AtomicInteger ID_GENERATOR = new AtomicInteger(0);
+    private static int proximoId = 0;
 
-    private final int id;
-    private int casilleroId = -1;
-    private final ReentrantLock lock = new ReentrantLock(); // Lock por pedido es CRUCIAL
-
+    private final int id; //Representa el número de pedido
+    private int casilleroId = -1; //Representa la posición del casillero seleccionado para ese pedido
     public Pedido() {
-        this.id = ID_GENERATOR.incrementAndGet();
+        this.id = generarId();
     }
 
+    private static synchronized int generarId() {
+        return proximoId++;
+    }
     public void asignarCasillero(int casilleroId) {
         this.casilleroId = casilleroId;
     }
-    // Métodos para bloquear/desbloquear el pedido específico
-    public void lock() { lock.lock(); }
-    public void unlock() { lock.unlock(); }
 
     public int getId() {
         return id;

@@ -1,41 +1,20 @@
 import java.util.Random;
-import java.util.concurrent.atomic.AtomicBoolean;
 
 public class DespachadorPedido implements Runnable {
     private final Random random = new Random();
     private final RegistroPedidos registro;
     private final MatrizCasilleros matriz; // Necesaria para liberar casillero
-    private final AtomicBoolean running;
+    private static volatile boolean running;
     private final int demoraDespachador;
     private final int variacionDemoraMs;
     private static final int PROBABILIDAD_EXITO = 85; //85% por consigna
 
-    public DespachadorPedido(RegistroPedidos registro, MatrizCasilleros matriz, int demoraBaseMs, int variacionDemoraMs, AtomicBoolean running) {
+    public DespachadorPedido(RegistroPedidos registro, MatrizCasilleros matriz, int demoraBaseMs, int variacionDemoraMs, boolean running) {
         this.registro = registro;
         this.matriz = matriz;
         this.demoraDespachador = demoraBaseMs;
         this.variacionDemoraMs = variacionDemoraMs;
-        this.running = running;
-    }
-
-    @Override
-    public void run() {
-        System.out.println(Thread.currentThread().getName() + " iniciado.");
-        try {
-            // Bucle principal: sigue mientras 'running' sea true O mientras queden pedidos por despachar
-            while (running.get() || registro.getCantidad(EstadoPedido.PREPARACION) > 0) {
-                // Condición de control por si otro hilo lo hace cero en el momento que entra.
-                if (!running.get() && registro.getCantidad(EstadoPedido.PREPARACION) == 0) {
-                    break;
-                }
-                procesarPedido();
-                aplicarDemora();
-            }
-        } catch (InterruptedException e) {
-            Thread.currentThread().interrupt();
-            System.out.println(Thread.currentThread().getName() + " interrumpido.");
-        }
-        System.out.println(Thread.currentThread().getName() + " terminado.");
+        DespachadorPedido.running = running;
     }
 
     private void procesarPedido() {
@@ -43,11 +22,8 @@ public class DespachadorPedido implements Runnable {
         Pedido pedido = registro.obtenerPedidoAleatorio(EstadoPedido.PREPARACION);
 
         if (pedido != null) {
-            // Bloquear el pedido específico para procesarlo
-            pedido.lock();
             try {
-                // Intentar remover el pedido específico de PREPARACION.
-                // Es posible que otro hilo lo haya removido entre obtenerPedidoAleatorio y aquí.
+                //remover el pedido específico de PREPARACION.
                 boolean removido = registro.removerPedido(pedido, EstadoPedido.PREPARACION); //Verifico que pueda ser removido
 
                 if (removido ) {
@@ -70,8 +46,8 @@ public class DespachadorPedido implements Runnable {
                     }
                 }
 
-            } finally {
-                pedido.unlock();
+            } catch (Exception e) {
+
             }
         }
     }
@@ -84,5 +60,29 @@ public class DespachadorPedido implements Runnable {
         }
         int demora = Math.max(0, demoraDespachador + variacion);
         Thread.sleep(demora);
+    }
+
+    public static void setRunning(boolean nuevoEstado) {
+        DespachadorPedido.running= nuevoEstado;
+    }
+
+    public boolean isRunning() {
+        return DespachadorPedido.running;
+    }
+
+    @Override
+    public void run() {
+        System.out.println(Thread.currentThread().getName() + " iniciado.");
+        try {
+            // Bucle principal
+            while (isRunning() || registro.getCantidad(EstadoPedido.PREPARACION) > 0) {
+                procesarPedido();
+                aplicarDemora();
+            }
+        } catch (InterruptedException e) {
+            Thread.currentThread().interrupt();
+            System.out.println(Thread.currentThread().getName() + " interrumpido.");
+        }
+        System.out.println(Thread.currentThread().getName() + " terminado.");
     }
 }

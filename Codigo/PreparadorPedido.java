@@ -1,53 +1,29 @@
-
 import java.util.Random;
-import java.util.concurrent.atomic.AtomicBoolean;
 
 public class PreparadorPedido implements Runnable {
     private final Random random = new Random();
     private final RegistroPedidos registro;
     private final MatrizCasilleros matriz;
-    private final AtomicBoolean running;
+    private static volatile boolean running;
     private final int demoraPreparador;
     private final int variacionDemoraMs;
-    private final int totalPedidosAGenerar; // Límite superior
+    private final int totalPedidosAGenerar;
 
-    public PreparadorPedido(RegistroPedidos registro, MatrizCasilleros matriz, int demoraPreparador, int variacionDemoraMs, int totalPedidosAGenerar, AtomicBoolean running) {
+    public PreparadorPedido(RegistroPedidos registro, MatrizCasilleros matriz, int demoraPreparador, int variacionDemoraMs, int totalPedidosAGenerar,boolean  running) {
         this.registro = registro;
         this.matriz = matriz;
         this.demoraPreparador = demoraPreparador;
         this.variacionDemoraMs = variacionDemoraMs;
         this.totalPedidosAGenerar = totalPedidosAGenerar;
-        this.running = running;
-    }
-
-    @Override
-    public void run() {
-        System.out.println(Thread.currentThread().getName() + " iniciado.");
-        try {
-            // La condición ahora usa el contador total de generados
-            while (running.get() && registro.getTotalPedidosGenerados() < totalPedidosAGenerar) {
-                procesarPedido(); // Intentará crear y agregar un pedido
-                aplicarDemora();
-            }
-        } catch (InterruptedException e) {
-            Thread.currentThread().interrupt();
-            System.out.println(Thread.currentThread().getName() + " interrumpido.");
-        }
-        // Añadir un mensaje si termina por alcanzar el límite
-        if (registro.getTotalPedidosGenerados() >= totalPedidosAGenerar) {
-            System.out.println(Thread.currentThread().getName() + " terminó porque se alcanzó el límite de pedidos.");
-        } else {
-            System.out.println(Thread.currentThread().getName() + " terminado.");
-        }
+        PreparadorPedido.running = running;
     }
 
     private void procesarPedido() {
-        // Doble chequeo
         if (registro.getTotalPedidosGenerados() >= totalPedidosAGenerar) {
             return; // No generar más si ya se alcanzó el límite
         }
 
-        int casilleroId = matriz.ocuparCasilleroAleatorio();
+        int casilleroId = matriz.ocuparCasilleroAleatorio();//Casilleroid toma un valor aleatorio disponible entre 0 y 200
         if (casilleroId != -1) {
             if (registro.getTotalPedidosGenerados() < totalPedidosAGenerar) {
                 // Crear nuevo pedido y asignar casillero
@@ -81,5 +57,35 @@ public class PreparadorPedido implements Runnable {
         }
         int demora = Math.max(0, demoraPreparador + variacion);
         Thread.sleep(demora);
+    }
+
+    public static void setRunning(boolean nuevoEstado) {
+        PreparadorPedido.running= nuevoEstado;
+    }
+
+    public boolean isRunning() {
+        return PreparadorPedido.running;
+    }
+
+    @Override
+    public void run() {
+        System.out.println(Thread.currentThread().getName() + " iniciado.");
+
+        if (registro.getTotalPedidosGenerados() >= totalPedidosAGenerar) {
+            System.out.println(Thread.currentThread().getName() + " terminó porque se alcanzó el límite de pedidos.");
+        } else {
+            System.out.println(Thread.currentThread().getName() + " terminado.");
+        }
+
+        try {
+            while (isRunning() && registro.getTotalPedidosGenerados() < totalPedidosAGenerar) {
+                procesarPedido(); // Crear y agregar un pedido
+                aplicarDemora();
+            }
+        } catch (InterruptedException e) {
+            Thread.currentThread().interrupt();
+            System.out.println(Thread.currentThread().getName() + " interrumpido.");
+        }
+
     }
 }

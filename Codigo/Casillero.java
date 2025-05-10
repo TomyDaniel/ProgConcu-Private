@@ -24,7 +24,10 @@ public class Casillero {
         estado = EstadoCasillero.VACIO;
     }
 
-    public void marcarFueraDeServicio() {
+    public void marcarFueraDeServicio() throws IllegalStateException {
+        if (estado != EstadoCasillero.OCUPADO) {
+            throw new IllegalStateException("No se puede marcar como fuera de servicio un casillero que no estaba ocupado");
+        }
         estado = EstadoCasillero.FUERA_DE_SERVICIO;
     }
 

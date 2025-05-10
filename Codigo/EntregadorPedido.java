@@ -1,43 +1,18 @@
-
-
-import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.Random;
 
 public class EntregadorPedido implements Runnable {
     private final Random random = new Random();
     private final RegistroPedidos registro;
-    private final AtomicBoolean running;
+    private static volatile boolean running;        //Siendo volatile es visible para todos los hilos
     private final int demoraEntregador;
     private final int variacionDemoraMs;
     private static final int PROBABILIDAD_EXITO = 90; //90% por consigna
 
-    public EntregadorPedido(RegistroPedidos registro, int demoraBaseMs, int variacionDemoraMs, AtomicBoolean running) {
+    public EntregadorPedido(RegistroPedidos registro, int demoraBaseMs, int variacionDemoraMs, boolean estadoInicial) {
         this.registro = registro;
         this.demoraEntregador = demoraBaseMs;
         this.variacionDemoraMs = variacionDemoraMs;
-        this.running = running;
-    }
-
-    @Override
-    public void run() {
-        System.out.println(Thread.currentThread().getName() + " iniciado.");
-        try {
-            // Bucle principal: sigue mientras 'running' sea true O mientras queden pedidos por entregar
-            while (running.get() || registro.getCantidad(EstadoPedido.TRANSITO) > 0) {
-                // Si !running.get(), solo procesamos los restantes, si no hay, salimos.
-                if (!running.get() && registro.getCantidad(EstadoPedido.TRANSITO) == 0) {
-                    break;
-                }
-
-                procesarPedido();
-                aplicarDemora();
-
-            }
-        } catch (InterruptedException e) {
-            Thread.currentThread().interrupt();
-            System.out.println(Thread.currentThread().getName() + " interrumpido.");
-        }
-        System.out.println(Thread.currentThread().getName() + " terminado.");
+        EntregadorPedido.running = estadoInicial;       //Estado inicial de simulación
     }
 
     private void procesarPedido() {
@@ -46,10 +21,9 @@ public class EntregadorPedido implements Runnable {
 
         if (pedido != null) {
             // Bloquear el pedido específico para procesarlo
-            pedido.lock();
             try {
                 // Intentar remover el pedido específico de TRANSITO.
-                boolean removido = registro.removerPedido(pedido, EstadoPedido.TRANSITO); // <-- MODIFICADO: Usar método de RegistroPedidos
+                boolean removido = registro.removerPedido(pedido, EstadoPedido.TRANSITO);
 
                 if (removido) {
                     // El pedido fue exitosamente "adquirido" por este hilo Entregador.
@@ -67,8 +41,8 @@ public class EntregadorPedido implements Runnable {
                     }
                 }
 
-            } finally {
-                pedido.unlock();
+            } catch (Exception e) {
+
             }
         }
     }
@@ -81,5 +55,29 @@ public class EntregadorPedido implements Runnable {
         }
         int demora = Math.max(0, demoraEntregador + variacion);
         Thread.sleep(demora);
+    }
+
+    public static void setRunning(boolean nuevoEstado) {
+        EntregadorPedido.running= nuevoEstado;
+    }
+
+    public boolean isRunning() {
+        return EntregadorPedido.running;
+    }
+
+    @Override
+    public void run() {
+        System.out.println(Thread.currentThread().getName() + " iniciado.");
+        try {
+            // Bucle principal
+            while (isRunning() || registro.getCantidad(EstadoPedido.TRANSITO) > 0) {
+                procesarPedido();
+                aplicarDemora();
+            }
+        } catch (InterruptedException e) { //Un hilo lo despertó mientras estaba durmiendo
+            Thread.currentThread().interrupt();
+            System.out.println(Thread.currentThread().getName() + " interrumpido.");
+        }
+        System.out.println(Thread.currentThread().getName() + " terminado.");
     }
 }

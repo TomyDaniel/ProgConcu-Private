@@ -1,6 +1,6 @@
+import java.security.Principal;
 import java.util.ArrayList;
 import java.util.List;
-import java.util.concurrent.atomic.AtomicBoolean;
 
 public class Main {
 
@@ -28,13 +28,19 @@ public class Main {
     private static final String LOG_FILE_PATH = "simulacion_logistica.log";
     // -----------------------------------------
 
+    public static void finalizarHilos() {
+        PreparadorPedido.setRunning(false);
+        DespachadorPedido.setRunning(false);
+        EntregadorPedido.setRunning(false);
+        VerificadorPedido.setRunning(false);
+    }
 
     public static void main(String[] args) {
         System.out.println("Iniciando simulación de logística...");
         long startTime = System.currentTimeMillis();
 
         // Inicializar componentes
-        AtomicBoolean running = new AtomicBoolean(true); // Flag para detener hilos
+        boolean running=true;
         MatrizCasilleros matriz = new MatrizCasilleros(FILAS_MATRIZ, COLUMNAS_MATRIZ);
         RegistroPedidos registro = new RegistroPedidos();
 
@@ -81,36 +87,39 @@ public class Main {
         //Lógica Finalizacion
         System.out.println("Esperando finalización de la generación y procesamiento...");
         try{
-            while (running.get()) {
+            while (running) {
                 boolean preparacionCompleta = registro.getTotalPedidosGenerados() >= TOTAL_PEDIDOS_A_GENERAR;
                 boolean colasIntermediasVacias = registro.colasVacias();
                 Thread.sleep(500);
                 matriz.verificarEstadoCritico();
                 if (preparacionCompleta && colasIntermediasVacias) {
-                    running.set(false);
+                    running=false;
                     System.out.println("Condición de parada alcanzada. Señalando a hilos para terminar...");
                 }}
 
 
             } catch (InterruptedException e) {
                 Thread.currentThread().interrupt();
-                running.set(false);
-                System.err.println("Hilo principal interrumpido. Terminando simulación.");
+                finalizarHilos();
+
+
+            System.err.println("Hilo principal interrumpido. Terminando simulación.");
             } catch (MatrizLlenaException e){
             System.out.println("Programa finalizado: todos los casilleros estan fuera de servicio");
-            running.set(false);
+                finalizarHilos();
         }
-
 
         //Esperar a que todos los hilos terminen
         for (Thread hilo : hilos) {
             try{
                 hilo.join();
+                finalizarHilos();
+
             } catch (InterruptedException e) {
                 Thread.currentThread().interrupt();
+
             }
         }
-
         // Detener Logger
         logger.detenerLogPeriodico();
 
@@ -130,7 +139,7 @@ public class Main {
         System.out.println("--- Estadísticas Finales de Casilleros ---");
 
 
-        logger.logFinal(duration);
+        //logger.logFinal(duration);
         System.out.println("Log final guardado en: " + LOG_FILE_PATH);
     }
 }

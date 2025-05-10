@@ -1,22 +1,17 @@
-import java.util.List;
-import java.util.Map;
-import java.util.concurrent.ConcurrentHashMap;
-import java.util.concurrent.CopyOnWriteArrayList;
-import java.util.concurrent.atomic.AtomicInteger;
-import java.util.Random;
+import java.util.*;
 
 public class RegistroPedidos {
 
     // Mapa para almacenar las listas de pedidos por estado
-    private final Map<EstadoPedido, List<Pedido>> pedidosPorEstado = new ConcurrentHashMap<>();
+    private final Map<EstadoPedido, List<Pedido>> pedidosPorEstado = new HashMap<>();
     // Contador para el número total de pedidos que se han iniciado a preparar
-    private final AtomicInteger totalPedidosGenerados = new AtomicInteger(0);
+    private int totalPedidosGenerados = 0;
     private final Random random = new Random();
 
     public RegistroPedidos() {
         // Inicializar una lista para cada estado definido en el enum
         for (EstadoPedido estado : EstadoPedido.values()) {
-            pedidosPorEstado.put(estado, new CopyOnWriteArrayList<>());
+            pedidosPorEstado.put(estado, new ArrayList<>());
         }
     }
 
@@ -27,14 +22,13 @@ public class RegistroPedidos {
                 this.getCantidad(EstadoPedido.ENTREGADO) == 0;
     }
 
-    public void agregarPedido(Pedido pedido, EstadoPedido estado) {
+    public synchronized void agregarPedido(Pedido pedido, EstadoPedido estado) {
         pedidosPorEstado.get(estado).add(pedido);
     }
 
-    public boolean removerPedido(Pedido pedido, EstadoPedido estado) { // Cambiado a boolean
+    public synchronized boolean removerPedido(Pedido pedido, EstadoPedido estado) { // Cambiado a boolean
         List<Pedido> lista = pedidosPorEstado.get(estado);
         if (lista != null) {
-            // remove() en CopyOnWriteArrayList devuelve boolean
             return lista.remove(pedido);
         }
         return false; // No se pudo remover (lista no encontrada o pedido no presente)
@@ -45,14 +39,9 @@ public class RegistroPedidos {
         if (lista == null || lista.isEmpty()) {
             return null;
         }
-        int index = random.nextInt(lista.size());
-        try {
-            return lista.get(index);
-        } catch (IndexOutOfBoundsException e) {
-            // Puede ocurrir en raras condiciones de concurrencia si la lista se vacía
-            // entre la comprobación isEmpty/size() y el get().
-            return null;
-        }
+        int index = random.nextInt(lista.size());   //Elegimos una posicion aleatoria de la lista
+        return lista.get(index);
+
     }
 
     public int getCantidad(EstadoPedido estado) {
@@ -61,11 +50,11 @@ public class RegistroPedidos {
         return (lista != null) ? lista.size() : 0;
     }
 
-    public void incrementarTotalGenerados() {
-        totalPedidosGenerados.incrementAndGet();
+    public synchronized void incrementarTotalGenerados() {
+        totalPedidosGenerados++;
     }
 
-    public int getTotalPedidosGenerados() {
-        return totalPedidosGenerados.get();
+    public synchronized int getTotalPedidosGenerados() {
+        return totalPedidosGenerados;
     }
 }
