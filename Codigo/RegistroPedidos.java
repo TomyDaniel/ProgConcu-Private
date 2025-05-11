@@ -1,4 +1,8 @@
-import java.util.*;
+import java.util.List;
+import java.util.Random;
+import java.util.ArrayList;
+import java.util.Map;
+import java.util.HashMap;
 
 public class RegistroPedidos {
 
@@ -26,35 +30,37 @@ public class RegistroPedidos {
         pedidosPorEstado.get(estado).add(pedido);
     }
 
-    public synchronized boolean removerPedido(Pedido pedido, EstadoPedido estado) { // Cambiado a boolean
+    public synchronized boolean removerPedido(Pedido pedido, EstadoPedido estado) {
         List<Pedido> lista = pedidosPorEstado.get(estado);
         if (lista != null) {
             return lista.remove(pedido);
         }
-        return false; // No se pudo remover (lista no encontrada o pedido no presente)
-    }
-
-    public Pedido obtenerPedidoAleatorio(EstadoPedido estado) {
-        List<Pedido> lista = pedidosPorEstado.get(estado);
-        if (lista == null || lista.isEmpty()) {
-            return null;
-        }
-        int index = random.nextInt(lista.size());   //Elegimos una posicion aleatoria de la lista
-        return lista.get(index);
-
-    }
-
-    public int getCantidad(EstadoPedido estado) {
-        List<Pedido> lista = pedidosPorEstado.get(estado);
-        // Las listas se inicializan, así que no deberían ser null
-        return (lista != null) ? lista.size() : 0;
+        return false; // No se pudo remover (el pedido no existe)
     }
 
     public synchronized void incrementarTotalGenerados() {
         totalPedidosGenerados++;
     }
 
-    public synchronized int getTotalPedidosGenerados() {
+    public int getTotalPedidosGenerados() {
         return totalPedidosGenerados;
     }
+
+    public synchronized Pedido obtenerPedidoAleatorio(EstadoPedido estado) {
+        List<Pedido> lista = pedidosPorEstado.get(estado);
+        if (lista == null || lista.isEmpty()) {
+            return null; //Todavia no existe ningun pedido
+        }
+        int index = random.nextInt(lista.size());   //Elegimos una posicion aleatoria de la lista
+        return lista.get(index);
+
+    }
+
+    public synchronized int getCantidad(EstadoPedido estado) {
+        List<Pedido> lista = pedidosPorEstado.get(estado);
+        // Las listas se inicializan, así que no deberían ser null
+        return (lista != null) ? lista.size() : 0;
+    }
+
+
 }

@@ -1,10 +1,12 @@
 import java.util.ArrayList;
 import java.util.Collections;
 import java.util.List;
+
 public class MatrizCasilleros {
+
     private final Casillero[][] matriz;
-    private final int filas;
-    private final int columnas;
+    private final int filas,columnas;
+
     public MatrizCasilleros(int filas, int columnas) {
         this.filas = filas;
         this.columnas = columnas;
@@ -18,7 +20,7 @@ public class MatrizCasilleros {
         }
     }
 
-    public int ocuparCasilleroAleatorio() {
+    public synchronized int ocuparCasilleroAleatorio() {
             // Crear lista de posiciones a intentar (orden aleatorio)
             List<Integer> posiciones = new ArrayList<>(filas * columnas);   //contiene las id de todos los casilleros
             for (int i = 0; i < filas * columnas; i++) {
@@ -78,7 +80,6 @@ public class MatrizCasilleros {
     }
 
     public void verificarEstadoCritico() throws MatrizLlenaException{
-        try {
             int contador = getSizeFueraDeServicio();
             int limitePermitido = filas * columnas; // Puedes ajustar este umbral
 
@@ -87,14 +88,8 @@ public class MatrizCasilleros {
                         " casilleros fuera de servicio de un total de " +
                         (filas * columnas) + ". El sistema no puede continuar.");
             }
-        } catch (Exception e) {}
     }
 
 
 }
 
-class MatrizLlenaException extends RuntimeException {
-    public MatrizLlenaException(String mensaje) {
-        super(mensaje);
-    }
-}

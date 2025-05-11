@@ -5,13 +5,11 @@ public class EntregadorPedido implements Runnable {
     private final RegistroPedidos registro;
     private static volatile boolean running;        //Siendo volatile es visible para todos los hilos
     private final int demoraEntregador;
-    private final int variacionDemoraMs;
     private static final int PROBABILIDAD_EXITO = 90; //90% por consigna
 
-    public EntregadorPedido(RegistroPedidos registro, int demoraBaseMs, int variacionDemoraMs, boolean estadoInicial) {
+    public EntregadorPedido(RegistroPedidos registro, int demoraBaseMs, boolean estadoInicial) {
         this.registro = registro;
         this.demoraEntregador = demoraBaseMs;
-        this.variacionDemoraMs = variacionDemoraMs;
         EntregadorPedido.running = estadoInicial;       //Estado inicial de simulación
     }
 
@@ -49,12 +47,8 @@ public class EntregadorPedido implements Runnable {
 
 
     private void aplicarDemora() throws InterruptedException {
-        int variacion = 0;
-        if (variacionDemoraMs > 0) {
-            variacion = random.nextInt(variacionDemoraMs * 2 + 1) - variacionDemoraMs;
-        }
-        int demora = Math.max(0, demoraEntregador + variacion);
-        Thread.sleep(demora);
+        int variacion = random.nextInt(0, demoraEntregador/2)+demoraEntregador;
+        Thread.sleep(variacion);
     }
 
     public static void setRunning(boolean nuevoEstado) {

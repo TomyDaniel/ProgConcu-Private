@@ -6,16 +6,19 @@ public class PreparadorPedido implements Runnable {
     private final MatrizCasilleros matriz;
     private static volatile boolean running;
     private final int demoraPreparador;
-    private final int variacionDemoraMs;
     private final int totalPedidosAGenerar;
 
-    public PreparadorPedido(RegistroPedidos registro, MatrizCasilleros matriz, int demoraPreparador, int variacionDemoraMs, int totalPedidosAGenerar,boolean  running) {
+    public PreparadorPedido(RegistroPedidos registro, MatrizCasilleros matriz, int demoraPreparador, int totalPedidosAGenerar,boolean  running) {
         this.registro = registro;
         this.matriz = matriz;
         this.demoraPreparador = demoraPreparador;
-        this.variacionDemoraMs = variacionDemoraMs;
         this.totalPedidosAGenerar = totalPedidosAGenerar;
         PreparadorPedido.running = running;
+    }
+
+    private void aplicarDemora() throws InterruptedException {
+        int variacion = random.nextInt(0, demoraPreparador/2)+demoraPreparador;
+        Thread.sleep(variacion);
     }
 
     private void procesarPedido() {
@@ -24,40 +27,28 @@ public class PreparadorPedido implements Runnable {
         }
 
         int casilleroId = matriz.ocuparCasilleroAleatorio();//Casilleroid toma un valor aleatorio disponible entre 0 y 200
-        if (casilleroId != -1) {
-            if (registro.getTotalPedidosGenerados() < totalPedidosAGenerar) {
-                // Crear nuevo pedido y asignar casillero
-                Pedido nuevoPedido = new Pedido();
-                nuevoPedido.asignarCasillero(casilleroId);
-                // El pedido debe pasar al estado Preparacion
-                registro.agregarPedido(nuevoPedido, EstadoPedido.PREPARACION);
-                // Incrementar el contador total de generados
-                registro.incrementarTotalGenerados();
-                System.out.println(Thread.currentThread().getName() + " preparó " + nuevoPedido + " en casillero " + casilleroId + " (Total generados: " + registro.getTotalPedidosGenerados() + ")");
 
-            } else {
-                // Si se alcanzó el límite justo después de ocupar el casillero, hay que liberarlo.
-                System.out.println(Thread.currentThread().getName() + " ocupó casillero " + casilleroId + " pero se alcanzó el límite antes de crear el pedido. Liberando...");
-                matriz.liberarCasillero(casilleroId);
-            }
-        } else {
+        if (casilleroId == -1) {
             System.out.println(Thread.currentThread().getName() + " no encontró casillero disponible.");
-            try {
-                Thread.sleep(50); // Pequeña pausa si no se encontró casillero
-            } catch (InterruptedException e) {
-                Thread.currentThread().interrupt();
-            }
+            return;
         }
+
+        // Luego de ocupar un casillero se alcanzó el límite de pedidos, por lo tanto, lo debe liberar
+        if (registro.getTotalPedidosGenerados() >= totalPedidosAGenerar) {
+            System.out.println(Thread.currentThread().getName() + " ocupó casillero " + casilleroId + " pero se alcanzó el límite antes de crear el pedido. Liberando...");
+            matriz.liberarCasillero(casilleroId);
+            return;
+        }
+
+        Pedido nuevoPedido = new Pedido();
+        nuevoPedido.asignarCasillero(casilleroId);
+        registro.agregarPedido(nuevoPedido, EstadoPedido.PREPARACION);
+        registro.incrementarTotalGenerados(); //
+        System.out.println(Thread.currentThread().getName() + " preparó " + nuevoPedido + " en casillero " + casilleroId + " (Total generados: " + registro.getTotalPedidosGenerados() + ")");
+
     }
 
-    private void aplicarDemora() throws InterruptedException {
-        int variacion = 0;
-        if (variacionDemoraMs > 0) {
-            variacion = random.nextInt(variacionDemoraMs * 2 + 1) - variacionDemoraMs;
-        }
-        int demora = Math.max(0, demoraPreparador + variacion);
-        Thread.sleep(demora);
-    }
+
 
     public static void setRunning(boolean nuevoEstado) {
         PreparadorPedido.running= nuevoEstado;

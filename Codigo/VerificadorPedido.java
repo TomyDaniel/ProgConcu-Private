@@ -4,13 +4,11 @@ public class VerificadorPedido implements Runnable {
     private final RegistroPedidos registro;
     private static volatile boolean running;
     private final int demoraVerificador;
-    private final int variacionDemoraMs;
     private static final int PROBABILIDAD_EXITO = 95; //95% por consigna
 
-    public VerificadorPedido(RegistroPedidos registro, int demoraBaseMs, int variacionDemoraMs, boolean running) {
+    public VerificadorPedido(RegistroPedidos registro, int demoraBaseMs, boolean running) {
         this.registro = registro;
         this.demoraVerificador = demoraBaseMs;
-        this.variacionDemoraMs = variacionDemoraMs;
         VerificadorPedido.running = running;
     }
 
@@ -18,39 +16,37 @@ public class VerificadorPedido implements Runnable {
         // Obtener un pedido aleatorio del estado ENTREGADO
         Pedido pedido = registro.obtenerPedidoAleatorio(EstadoPedido.ENTREGADO);
 
-        if (pedido != null) {
-            try {
-                // Intentar remover el pedido específico de la lista ENTREGADO.
-                boolean removido = registro.removerPedido(pedido, EstadoPedido.ENTREGADO);
-
-                if (removido) {
-                    // El pedido fue exitosamente "adquirido" por este hilo Verificador.
-                    boolean exitoso = random.nextInt(100) < PROBABILIDAD_EXITO;
-                    int casilleroId = pedido.getCasilleroId(); // Obtener ID antes de decidir qué hacer
-
-                    if (exitoso) {
-                        // Casillero OK, mover a VERIFICADO
-                        registro.agregarPedido(pedido, EstadoPedido.VERIFICADO);
-                        System.out.println(Thread.currentThread().getName() + " verificó OK " + pedido + " (Casillero: " + casilleroId + ")");
-                    } else {
-                        // Casillero FAIL, mover a FALLIDO
-                        registro.agregarPedido(pedido, EstadoPedido.FALLIDO);
-                        System.out.println(Thread.currentThread().getName() + " verificó FAIL " + pedido + " (Casillero: " + casilleroId + ")");
-
-                    }
-                }
-
-            } catch (Exception e) {}
+        if (pedido == null) {
+            return;
         }
+
+        try {
+            // Intentar remover el pedido específico de la lista ENTREGADO.
+            boolean removido = registro.removerPedido(pedido, EstadoPedido.ENTREGADO);
+            if (!removido) {
+                return; //Esto significa que el pedido que estaba verificando ya fue removido anteriormente por otro verificador
+            }
+            // El pedido fue exitosamente "adquirido" por este hilo Verificador.
+            boolean exitoso = random.nextInt(100) < PROBABILIDAD_EXITO;
+            int casilleroId = pedido.getCasilleroId(); // Obtener ID del casillero
+
+            if (exitoso) {
+                // Casillero OK, mover a VERIFICADO
+                registro.agregarPedido(pedido, EstadoPedido.VERIFICADO);
+                System.out.println(Thread.currentThread().getName() + " verificó OK " + pedido + " (Casillero: " + casilleroId + ")");
+            } else {
+                // Casillero FAIL, mover a FALLIDO
+                registro.agregarPedido(pedido, EstadoPedido.FALLIDO);
+                System.out.println(Thread.currentThread().getName() + " verificó FAIL " + pedido + " (Casillero: " + casilleroId + ")");
+
+            }
+        } catch (Exception e) {}
+
     }
 
     private void aplicarDemora() throws InterruptedException {
-        int variacion = 0;
-        if (variacionDemoraMs > 0) {
-            variacion = random.nextInt(variacionDemoraMs * 2 + 1) - variacionDemoraMs;
-        }
-        int demora = Math.max(0, demoraVerificador + variacion);
-        Thread.sleep(demora);
+        int variacion = random.nextInt(0, demoraVerificador/2)+demoraVerificador;
+        Thread.sleep(variacion);
     }
 
     public static void setRunning(boolean nuevoEstado) {
