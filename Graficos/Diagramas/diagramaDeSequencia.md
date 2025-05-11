@@ -1,95 +1,226 @@
 ```mermaid
 sequenceDiagram
-    participant User as Usuario (Externo)
-    participant Prep1 as HiloPreparador_1
-    participant Matriz as MatrizCasilleros
-    participant Cas1 as Casillero_X
-    participant RegP as RegistroPedidos
-    participant Pedido1 as Pedido_A
-    participant Desp1 as HiloDespachador_1
+    participant User as "Usuario/E-commerce"
+    participant hPrep1 as "hPrep1:ProcesoPreparacion"
+    participant hPrep2 as "hPrep2:ProcesoPreparacion"
+    participant MatrizC as "mc:MatrizCasilleros"
+    participant RegP as "rp:RegistroPedidos"
+    participant PedidoActual as "pActual:Pedido"
+    participant hDesp1 as "hDesp1:ProcesoDespacho"
+    participant hDesp2 as "hDesp2:ProcesoDespacho"
+    participant hEnt1 as "hEnt1:ProcesoEntrega"
+    participant hEnt2 as "hEnt2:ProcesoEntrega"
+    participant hVerif1 as "hVerif1:ProcesoVerificacion"
+    participant hVerif2 as "hVerif2:ProcesoVerificacion"
+    participant SysLog as "log:Log"
 
-    Note over User, Desp1: Sistema iniciado, hilos en ejecución.
+    User->>hPrep1: Nuevo Pedido (datos)
+    activate hPrep1
+    hPrep1->>hPrep1: pNuevo = crear Objeto Pedido()
 
-    User ->> Prep1: (Implícito) Nuevo pedido generado/disponible
+    par hPrep1_busca_casillero
+        hPrep1->>MatrizC: mc.getLock().lock()
+        activate MatrizC
+        hPrep1->>MatrizC: casillero = obtenerCasilleroAleatorioDisponible()
+        opt casillero existe
+            hPrep1->>MatrizC: marcarOcupado(casillero, pNuevo)
+            hPrep1->>MatrizC: incrementarContadorCasillero(casillero)
+            hPrep1->>MatrizC: mc.getLock().unlock()
+            deactivate MatrizC
+            hPrep1->>pNuevo: setCasilleroAsociado(casillero)
+            hPrep1->>pNuevo: setEstado(EN_PREPARACION)
 
-    Note over Prep1: Intenta encontrar y ocupar un casillero (puede reintentar si falla)
-
-    Prep1 ->> Matriz: lock() // Bloqueo para buscar
-    Prep1 ->> Matriz: buscarCasilleroVacio()
-    Matriz -->> Prep1: casilleroEncontrado(Cas1) // Asumiendo que se encontró uno
-    Prep1 ->> Matriz: unlock() // Desbloqueo post-búsqueda
-
-    Prep1 ->> Cas1: lock() // Bloqueo del casillero específico
-    alt Casillero [Cas1] aún vacío?
-        Prep1 ->> Cas1: ocupar()
-        Prep1 ->> Cas1: incrementarContador()
-        Prep1 ->> Cas1: unlock()
-        Note over Prep1: Casillero encontrado y ocupado con éxito
-
-        Prep1 ->> Pedido1: new Pedido(id_A)
-        Prep1 ->> Pedido1: asignarCasillero(Cas1)
-
-        Prep1 ->> RegP: lock(Preparacion) // Bloquear lista de preparación
-        Prep1 ->> RegP: agregarAPreparacion(Pedido1)
-        Prep1 ->> RegP: unlock(Preparacion)
-
-        Prep1 ->> Prep1: dormir() // Espera configurable
-
-    else Casillero [Cas1] ocupado por otro hilo
-        Prep1 ->> Cas1: unlock()
-        Note over Prep1: Conflicto, se debe buscar otro casillero (reintento no mostrado en detalle)
-    end
-
-    Note over Prep1, Desp1: Si el pedido A se creó, ahora está en preparación...
-
+            hPrep1->>RegP: rp.getLockPreparacion().lock()
+            activate RegP
+            hPrep1->>RegP: agregarAPreparacion(pNuevo)
+            hPrep1->>RegP: rp.getLockPreparacion().unlock()
+            deactivate RegP
+            note right of hPrep1: Pedido en preparación
+        else casillero NO existe
+            hPrep1->>MatrizC: mc.getLock().unlock()
+            deactivate MatrizC
+            hPrep1->>hPrep1: Esperar/Reintentar búsqueda
+            note right of hPrep1: No hay casilleros vacíos
+        end
    
-    Desp1 ->> RegP: lock(Preparacion) // Bloquear lista
-    Desp1 ->> RegP: tomarDePreparacion() // Selecciona Pedido_A
-    RegP -->> Desp1: Pedido1
-    Desp1 ->> RegP: unlock(Preparacion)
-
-    Desp1 ->> Pedido1: lock() // Bloquea el pedido para procesarlo
-
-    Desp1 ->> Desp1: verificarDatos() // Lógica interna
-    Note right of Desp1: Probabilidad 85% éxito, 15% fallo
-
-    alt Verificación Exitosa (85%)
-        Desp1 ->> Pedido1: getCasilleroAsignado()
-        Pedido1 -->> Desp1: Cas1
-
-        Desp1 ->> Cas1: lock() // Bloquear casillero para liberarlo
-        Desp1 ->> Cas1: liberar()
-        Desp1 ->> Cas1: unlock()
-
-        Desp1 ->> Pedido1: liberarCasillero() // Actualiza estado interno del pedido si es necesario
-
-        Desp1 ->> RegP: lock(Transito) // Bloquear lista de tránsito
-        Desp1 ->> RegP: agregarATransito(Pedido1)
-        Desp1 ->> RegP: unlock(Transito)
-
-        Note over Desp1, RegP: Pedido A movido a Tránsito
-
-    else Verificación Fallida (15%)
-        Desp1 ->> Pedido1: getCasilleroAsignado()
-        Pedido1 -->> Desp1: Cas1
-
-        Desp1 ->> Cas1: lock()
-        Desp1 ->> Cas1: ponerFueraDeServicio()
-        Desp1 ->> Cas1: unlock()
-
-        Desp1 ->> Pedido1: liberarCasillero()
-
-        Desp1 ->> RegP: lock(Fallidos) // Bloquear lista de fallidos
-        Desp1 ->> RegP: agregarAFallidos(Pedido1)
-        Desp1 ->> RegP: unlock(Fallidos)
-
-        Note over Desp1, RegP: Pedido A movido a Fallidos, Casillero X fuera de servicio
+        activate hPrep2
+        hPrep2->>MatrizC: mc.getLock().lock()
+        note right of hPrep2: Otro hilo de preparación (hPrep2)\nintenta acceder a la matriz de casilleros
+        hPrep2->>MatrizC: (operaciones similares...)
+        hPrep2->>MatrizC: mc.getLock().unlock()
+        deactivate hPrep2
     end
+    deactivate hPrep1
 
-    Desp1 ->> Pedido1: unlock() // Libera el bloqueo del pedido
+    activate hDesp1
+    par hDesp1_busca_pedido
+        hDesp1->>RegP: rp.getLockPreparacion().lock()
+        activate RegP
+        hDesp1->>RegP: pActual = tomarDePreparacionAleatorio()
+        opt pActual existe
+            hDesp1->>RegP: eliminarDePreparacion(pActual)
+        end
+        hDesp1->>RegP: rp.getLockPreparacion().unlock()
+        deactivate RegP
 
-    Desp1 ->> Desp1: dormir() // Espera configurable
+        opt pActual existe
+            hDesp1->>pActual: pActual.getLock().lock()
+            activate pActual
+            hDesp1->>hDesp1: verificarDatosPedido() // Probabilidad 85% éxito
+            alt Verificación Correcta (85%)
+                hDesp1->>MatrizC: mc.getLock().lock()
+                activate MatrizC
+                hDesp1->>MatrizC: marcarVacio(pActual.getCasilleroAsociado())
+                hDesp1->>MatrizC: mc.getLock().unlock()
+                deactivate MatrizC
+                
+                hDesp1->>pActual: setEstado(EN_TRANSITO)
+                hDesp1->>RegP: rp.getLockTransito().lock()
+                activate RegP
+                hDesp1->>RegP: agregarATransito(pActual)
+                hDesp1->>RegP: rp.getLockTransito().unlock()
+                deactivate RegP
+                note right of hDesp1: Pedido en tránsito
+            else Verificación Incorrecta (15%)
+                hDesp1->>MatrizC: mc.getLock().lock()
+                activate MatrizC
+                hDesp1->>MatrizC: marcarFueraDeServicio(pActual.getCasilleroAsociado())
+                hDesp1->>MatrizC: mc.getLock().unlock()
+                deactivate MatrizC
 
-    Note over User, Desp1: Continúa el ciclo para otros pedidos y etapas...
+                hDesp1->>pActual: setEstado(FALLIDO)
+                hDesp1->>RegP: rp.getLockFallidos().lock()
+                activate RegP
+                hDesp1->>RegP: agregarAFallidos(pActual)
+                hDesp1->>RegP: rp.getLockFallidos().unlock()
+                deactivate RegP
+                note right of hDesp1: Pedido fallido (despacho)
+            end
+            hDesp1->>pActual: pActual.getLock().unlock()
+            deactivate pActual
+        else pActual NO existe
+             hDesp1->>hDesp1: Esperar/Reintentar tomar pedido
+             note right of hDesp1: No hay pedidos en preparación
+        end
+        activate hDesp2
+        hDesp2->>RegP: rp.getLockPreparacion().lock()
+        note right of hDesp2: Otro hilo de despacho (hDesp2)\nintenta acceder a pedidos en preparación
+        hDesp2->>RegP: (operaciones similares...)
+        hDesp2->>RegP: rp.getLockPreparacion().unlock()
+        deactivate hDesp2
+    end
+    deactivate hDesp1
+
+    activate hEnt1
+    par hEnt1_busca_pedido_transito
+        hEnt1->>RegP: rp.getLockTransito().lock()
+        activate RegP
+        hEnt1->>RegP: pActual = tomarDeTransitoAleatorio()
+        opt pActual existe
+            hEnt1->>RegP: eliminarDeTransito(pActual)
+        end
+        hEnt1->>RegP: rp.getLockTransito().unlock()
+        deactivate RegP
+
+        opt pActual existe
+            hEnt1->>pActual: pActual.getLock().lock()
+            activate pActual
+            hEnt1->>hEnt1: confirmarEntrega() // Probabilidad 90% éxito
+            alt Entrega Confirmada (90%)
+                hEnt1->>pActual: setEstado(ENTREGADO)
+                hEnt1->>RegP: rp.getLockEntregados().lock()
+                activate RegP
+                hEnt1->>RegP: agregarAEntregados(pActual)
+                hEnt1->>RegP: rp.getLockEntregados().unlock()
+                deactivate RegP
+                note right of hEnt1: Pedido entregado
+            else Entrega No Confirmada (10%)
+                hEnt1->>pActual: setEstado(FALLIDO)
+                hEnt1->>RegP: rp.getLockFallidos().lock()
+                activate RegP
+                hEnt1->>RegP: agregarAFallidos(pActual)
+                hEnt1->>RegP: rp.getLockFallidos().unlock()
+                deactivate RegP
+                note right of hEnt1: Pedido fallido (entrega)
+            end
+            hEnt1->>pActual: pActual.getLock().unlock()
+            deactivate pActual
+        else pActual NO existe
+             hEnt1->>hEnt1: Esperar/Reintentar tomar pedido
+             note right of hEnt1: No hay pedidos en tránsito
+        end
+
+        activate hEnt2
+        hEnt2->>RegP: rp.getLockTransito().lock()
+        note right of hEnt2: Otro hilo de entrega (hEnt2)\nintenta acceder a pedidos en tránsito
+        hEnt2->>RegP: (operaciones similares...)
+        hEnt2->>RegP: rp.getLockTransito().unlock()
+        deactivate hEnt2
+    end
+    deactivate hEnt1
+
+    activate hVerif1
+    par hVerif1_busca_pedido_entregado
+        hVerif1->>RegP: rp.getLockEntregados().lock()
+        activate RegP
+        hVerif1->>RegP: pActual = tomarDeEntregadosAleatorio()
+        opt pActual existe
+            hVerif1->>RegP: eliminarDeEntregados(pActual)
+        end
+        hVerif1->>RegP: rp.getLockEntregados().unlock()
+        deactivate RegP
+
+        opt pActual existe
+            hVerif1->>pActual: pActual.getLock().lock()
+            activate pActual
+            hVerif1->>hVerif1: verificarPedidoFinal() // Probabilidad 95% éxito
+            alt Verificación Exitosa (95%)
+                hVerif1->>pActual: setEstado(VERIFICADO)
+                hVerif1->>RegP: rp.getLockVerificados().lock()
+                activate RegP
+                hVerif1->>RegP: agregarAVerificados(pActual)
+                hVerif1->>RegP: rp.getLockVerificados().unlock()
+                deactivate RegP
+                note right of hVerif1: Pedido verificado
+            else Verificación Fallida (5%)
+                hVerif1->>pActual: setEstado(FALLIDO)
+                hVerif1->>RegP: rp.getLockFallidos().lock()
+                activate RegP
+                hVerif1->>RegP: agregarAFallidos(pActual)
+                hVerif1->>RegP: rp.getLockFallidos().unlock()
+                deactivate RegP
+                note right of hVerif1: Pedido fallido (verificación)
+            end
+            hVerif1->>pActual: pActual.getLock().unlock()
+            deactivate pActual
+        else pActual NO existe
+             hVerif1->>hVerif1: Esperar/Reintentar tomar pedido
+             note right of hVerif1: No hay pedidos entregados para verificar
+        end
+    
+        activate hVerif2
+        hVerif2->>RegP: rp.getLockEntregados().lock()
+        note right of hVerif2: Otro hilo de verificación (hVerif2)\nintenta acceder a pedidos entregados
+        hVerif2->>RegP: (operaciones similares...)
+        hVerif2->>RegP: rp.getLockEntregados().unlock()
+        deactivate hVerif2
+    end
+    deactivate hVerif1
+
+    loop Cada 200ms
+        SysLog->>RegP: rp.getLockFallidos().lock()
+        activate RegP
+        SysLog->>RegP: numFallidos = getCantidadFallidos()
+        SysLog->>RegP: rp.getLockFallidos().unlock()
+        deactivate RegP
+
+        SysLog->>RegP: rp.getLockVerificados().lock()
+        activate RegP
+        SysLog->>RegP: numVerificados = getCantidadVerificados()
+        SysLog->>RegP: rp.getLockVerificados().unlock()
+        deactivate RegP
+        
+        SysLog->>SysLog: escribirEnArchivo(numFallidos, numVerificados)
+    end
 
 ``` 
