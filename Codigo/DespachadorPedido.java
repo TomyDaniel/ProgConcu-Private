@@ -4,10 +4,10 @@ public class DespachadorPedido implements Runnable {
 
     private final Random random = new Random();
     private final RegistroPedidos registro;
-    private final MatrizCasilleros matriz; // Necesaria para liberar casillero
+    private final MatrizCasilleros matriz;
     private static volatile boolean running;
     private final int demoraDespachador;
-    private static final int PROBABILIDAD_EXITO = 85; //85% por consigna
+    private static final int PROBABILIDAD_EXITO = 85;
 
     public DespachadorPedido(RegistroPedidos registro, MatrizCasilleros matriz, int demoraBaseMs, boolean running) {
         this.registro = registro;
@@ -17,42 +17,49 @@ public class DespachadorPedido implements Runnable {
     }
 
     private void procesarPedido() {
-        // Obtener un pedido aleatorio que tenga un estado de PREPARACION
-        Pedido pedido = registro.obtenerPedidoAleatorio(EstadoPedido.PREPARACION);
+        // Obtener Y REMOVER un pedido aleatorio que tenga un estado de PREPARACION
+        // Esta operación es ahora atómica dentro de RegistroPedidos
+        Pedido pedido = registro.obtenerYRemoverPedidoAleatorio(EstadoPedido.PREPARACION);
 
-        if (pedido==null) {
-            return; //La lista está vacia, por lo que no se puede obtener un pedido aleatorio. O otro hilo se lo llevó
+        if (pedido == null) {
+            // No hay pedidos en PREPARACION o fue tomado por otro despachador
+            return;
         }
 
-        //remover el pedido específico de PREPARACION.
-        boolean removido = registro.removerPedido(pedido, EstadoPedido.PREPARACION); //Verifico que pueda ser removido
-
-        if (!removido ) {
-            return; //Esto significa que otro hilo se "llevó" el pedido del hilo actual
-        }
-
+        // El pedido fue adquirido y removido de PREPARACION por este hilo Despachador.
         try {
-            // El pedido fue adquirido por este hilo Despachador.
             int casilleroId = pedido.getCasilleroId();
             boolean exitoso = random.nextInt(100) < PROBABILIDAD_EXITO;
             if (exitoso) {
-                // Lo sacamos del estado ocupado
-                matriz.liberarCasillero(casilleroId);
+                matriz.liberarCasillero(casilleroId); // Casillero.liberar() es synchronized
                 System.out.println(Thread.currentThread().getName() + " liberó casillero " + casilleroId + " para " + pedido);
-                // Lo movemos a pedidos en transito
                 registro.agregarPedido(pedido, EstadoPedido.TRANSITO);
                 System.out.println(Thread.currentThread().getName() + " despachó " + pedido + " a tránsito.");
-            }
-            else{
-                matriz.marcarFueraDeServicio(casilleroId);
+            } else {
+                matriz.marcarFueraDeServicio(casilleroId); // Casillero.marcarFueraDeServicio() es synchronized
                 System.out.println(Thread.currentThread().getName() + " marco casillero " + casilleroId + " como FUERA DE SERVICIO " + pedido);
                 registro.agregarPedido(pedido, EstadoPedido.FALLIDO);
                 System.out.println(Thread.currentThread().getName() + " envió " + pedido + " a fallido.");
             }
-        } catch (Exception e) {}
+        } catch (IllegalStateException e) {
+            // Esto podría ocurrir si el casillero ya no está en el estado esperado
+            // (ej. si se intentó liberar un casillero no ocupado).
+            // La sincronización en Casillero ayuda a prevenir inconsistencias,
+            // pero la lógica de estados debe ser robusta.
+            System.err.println(Thread.currentThread().getName() + " Error de estado al procesar " + pedido + " en casillero " + pedido.getCasilleroId() + ": " + e.getMessage());
+            // Decidir qué hacer con el pedido, quizás mover a FALLIDO si no se hizo ya.
+            // Por ahora, solo logueamos. Podría ser necesario re-intentar o mover a fallidos.
+            registro.agregarPedido(pedido, EstadoPedido.FALLIDO); // Asegurar que el pedido vaya a fallidos
+             System.out.println(Thread.currentThread().getName() + " envió " + pedido + " a fallido debido a error de estado del casillero.");
+        } catch (Exception e) {
+            System.err.println(Thread.currentThread().getName() + " Excepción inesperada procesando " + pedido + ": " + e.getMessage());
+            e.printStackTrace();
+            registro.agregarPedido(pedido, EstadoPedido.FALLIDO);
+            System.out.println(Thread.currentThread().getName() + " envió " + pedido + " a fallido debido a excepción inesperada.");
+        }
     }
 
-
+    // ... resto de la clase DespachadorPedido (aplicarDemora, setRunning, isRunning, run) sin cambios ...
     private void aplicarDemora() throws InterruptedException {
         int variacion = random.nextInt(0, demoraDespachador/2)+demoraDespachador;
         Thread.sleep(variacion);
@@ -70,7 +77,6 @@ public class DespachadorPedido implements Runnable {
     public void run() {
         System.out.println(Thread.currentThread().getName() + " iniciado.");
         try {
-            // Bucle principal
             while (isRunning() || registro.getCantidad(EstadoPedido.PREPARACION) > 0) {
                 procesarPedido();
                 aplicarDemora();
