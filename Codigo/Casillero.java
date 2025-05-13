@@ -26,11 +26,7 @@ public class Casillero {
     }
 
     public synchronized void marcarFueraDeServicio() throws IllegalStateException {
-        // Se podría permitir marcar fuera de servicio un casillero VACIO también.
-        // Por ahora, mantenemos la lógica original.
         if (estado != EstadoCasillero.OCUPADO) {
-            // Considera si esta lógica es la deseada o si un casillero VACIO también podría ponerse FUERA_DE_SERVICIO.
-            // Si la lógica es que sólo se pone fuera de servicio tras un fallo de DESPACHO, entonces OCUPADO es correcto.
             throw new IllegalStateException("No se puede marcar como fuera de servicio un casillero que no estaba ocupado (estaba " + estado + ")");
         }
         estado = EstadoCasillero.FUERA_DE_SERVICIO;

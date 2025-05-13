@@ -35,7 +35,6 @@ public class VerificadorPedido implements Runnable {
         }
     }
 
-    // ... resto de la clase VerificadorPedido (aplicarDemora, setRunning, isRunning, run) sin cambios ...
     private void aplicarDemora() throws InterruptedException {
         int variacion = random.nextInt(0, demoraVerificador/2)+demoraVerificador;
         Thread.sleep(variacion);

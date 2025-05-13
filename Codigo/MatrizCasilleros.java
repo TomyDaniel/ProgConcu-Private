@@ -21,7 +21,6 @@ public class MatrizCasilleros {
     }
 
     public synchronized int ocuparCasilleroAleatorio() {
-            // Crear lista de posiciones a intentar (orden aleatorio)
             List<Integer> posiciones = new ArrayList<>(filas * columnas);   //contiene las id de todos los casilleros
             for (int i = 0; i < filas * columnas; i++) {
                 posiciones.add(i);

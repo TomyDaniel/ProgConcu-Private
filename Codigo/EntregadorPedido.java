@@ -34,7 +34,6 @@ public class EntregadorPedido implements Runnable {
         }
     }
 
-    // ... resto de la clase EntregadorPedido (aplicarDemora, setRunning, isRunning, run) sin cambios ...
     private void aplicarDemora() throws InterruptedException {
         int variacion = random.nextInt(0, demoraEntregador/2)+demoraEntregador;
         Thread.sleep(variacion);

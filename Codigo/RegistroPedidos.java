@@ -9,22 +9,15 @@ public class RegistroPedidos {
 
     private final Map<EstadoPedido, List<Pedido>> pedidosPorEstado = new HashMap<>();
     private volatile int totalPedidosGenerados = 0; // Volatile para visibilidad
-    private final Object totalGeneradosLock = new Object(); // Lock para el contador
     private final Random random = new Random();
 
     public RegistroPedidos() {
         for (EstadoPedido estado : EstadoPedido.values()) {
-            // Usamos ArrayList estándar, la sincronización será externa.
             pedidosPorEstado.put(estado, new ArrayList<>());
         }
     }
 
     public boolean colasVacias() {
-        // Esta operación lee tamaños. Para una consistencia perfecta,
-        // necesitaría adquirir todos los locks, lo cual es complejo y propenso a deadlocks.
-        // Para una verificación de "finalización", una lectura no estrictamente atómica
-        // de todas las colas suele ser aceptable si la condición se verifica repetidamente.
-        // Si se necesita atomicidad estricta aquí, la estrategia sería más compleja.
         return this.getCantidad(EstadoPedido.PREPARACION) == 0 &&
                this.getCantidad(EstadoPedido.TRANSITO) == 0 &&
                this.getCantidad(EstadoPedido.ENTREGADO) == 0;
@@ -32,43 +25,38 @@ public class RegistroPedidos {
 
     public void agregarPedido(Pedido pedido, EstadoPedido estado) {
         List<Pedido> lista = pedidosPorEstado.get(estado);
-        // Sincronizamos sobre la lista específica
+        // Sincronizamos sobre la lista específica para evitar bloquear el MAPA completo
         synchronized (lista) {
             lista.add(pedido);
         }
     }
 
-    // Nuevo método atómico para obtener y remover un pedido aleatorio
     public Pedido obtenerYRemoverPedidoAleatorio(EstadoPedido estado) {
         List<Pedido> lista = pedidosPorEstado.get(estado);
-        if (lista == null) { // No debería ocurrir con la inicialización actual
+        if (lista == null) {
             return null;
         }
-        // Sincronizamos sobre la lista específica
         synchronized (lista) {
             if (lista.isEmpty()) {
                 return null;
             }
             int index = random.nextInt(lista.size());
-            return lista.remove(index); // remove() devuelve el elemento eliminado
+            return lista.remove(index);
         }
     }
 
 
-    public void incrementarTotalGenerados() {
-        synchronized (totalGeneradosLock) {
-            totalPedidosGenerados++;
-        }
+    public synchronized void incrementarTotalGenerados() {
+        totalPedidosGenerados++;
     }
 
     public int getTotalPedidosGenerados() {
-        return totalPedidosGenerados; // La lectura de volatile es atómica
+        return totalPedidosGenerados;
     }
 
     public int getCantidad(EstadoPedido estado) {
         List<Pedido> lista = pedidosPorEstado.get(estado);
-        if (lista == null) return 0; // No debería ocurrir
-        // Sincronizamos sobre la lista específica para leer su tamaño consistentemente
+        if (lista == null) return 0;
         synchronized (lista) {
             return lista.size();
         }
