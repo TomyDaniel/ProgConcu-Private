@@ -12,7 +12,7 @@ public class VerificadorPedido implements Runnable {
         VerificadorPedido.running = running;
     }
 
-    private void procesarPedido() throws MatrizLlenaException { // Propagar excepción
+    private void procesarPedido() { // Propagar excepción
         // Obtener un pedido aleatorio del estado ENTREGADO
         Pedido pedido = registro.obtenerPedidoAleatorio(EstadoPedido.ENTREGADO);
 
@@ -20,27 +20,26 @@ public class VerificadorPedido implements Runnable {
             return;
         }
 
-        try {
-            // Intentar remover el pedido específico de la lista ENTREGADO.
-            boolean removido = registro.removerPedido(pedido, EstadoPedido.ENTREGADO);
-            if (!removido) {
-                return; //Esto significa que el pedido que estaba verificando ya fue removido anteriormente por otro verificador
-            }
-            // El pedido fue exitosamente "adquirido" por este hilo Verificador.
-            boolean exitoso = random.nextInt(100) < PROBABILIDAD_EXITO;
-            int casilleroId = pedido.getCasilleroId(); // Obtener ID del casillero
+        // Intentar remover el pedido específico de la lista ENTREGADO.
+        boolean removido = registro.removerPedido(pedido, EstadoPedido.ENTREGADO);
+        if (!removido) {
+            return; //Esto significa que el pedido que estaba verificando ya fue removido anteriormente por otro verificador
+        }
 
-            if (exitoso) {
-                // Casillero OK, mover a VERIFICADO
-                registro.agregarPedido(pedido, EstadoPedido.VERIFICADO);
-                System.out.println(Thread.currentThread().getName() + " verificó OK " + pedido + " (Casillero: " + casilleroId + ")");
-            } else {
-                // Casillero FAIL, mover a FALLIDO
-                registro.agregarPedido(pedido, EstadoPedido.FALLIDO);
-                System.out.println(Thread.currentThread().getName() + " verificó FAIL " + pedido + " (Casillero: " + casilleroId + ")");
+        // El pedido fue adquirido por este hilo Verificador.
+        boolean exitoso = random.nextInt(100) < PROBABILIDAD_EXITO;
+        int casilleroId = pedido.getCasilleroId(); // Obtener ID del casillero
 
-            }
-        } catch (Exception e) {}
+        if (exitoso) {
+            // Casillero OK, mover a VERIFICADO
+            registro.agregarPedido(pedido, EstadoPedido.VERIFICADO);
+            System.out.println(Thread.currentThread().getName() + " verificó OK " + pedido + " (Casillero: " + casilleroId + ")");
+        } else {
+            // Casillero FAIL, mover a FALLIDO
+            registro.agregarPedido(pedido, EstadoPedido.FALLIDO);
+            System.out.println(Thread.currentThread().getName() + " verificó FAIL " + pedido + " (Casillero: " + casilleroId + ")");
+
+        }
 
     }
 

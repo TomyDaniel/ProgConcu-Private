@@ -35,18 +35,18 @@ public class RegistroPedidos {
         if (lista != null) {
             return lista.remove(pedido);
         }
-        return false; // No se pudo remover (el pedido no existe)
+        return false; // No se pudo remover (el pedido no existe). Otro hilo lo removió
     }
 
     public synchronized void incrementarTotalGenerados() {
         totalPedidosGenerados++;
     }
 
-    public int getTotalPedidosGenerados() {
+    public synchronized int getTotalPedidosGenerados() {
         return totalPedidosGenerados;
     }
 
-    public synchronized Pedido obtenerPedidoAleatorio(EstadoPedido estado) {
+    public Pedido obtenerPedidoAleatorio(EstadoPedido estado) {
         List<Pedido> lista = pedidosPorEstado.get(estado);
         if (lista == null || lista.isEmpty()) {
             return null; //Todavia no existe ningun pedido

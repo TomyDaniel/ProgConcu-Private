@@ -17,32 +17,31 @@ public class EntregadorPedido implements Runnable {
         // Obtener un pedido aleatorio de TRANSITO (no lo remueve aún)
         Pedido pedido = registro.obtenerPedidoAleatorio(EstadoPedido.TRANSITO);
 
-        if (pedido != null) {
-            // Bloquear el pedido específico para procesarlo
-            try {
-                // Intentar remover el pedido específico de TRANSITO.
-                boolean removido = registro.removerPedido(pedido, EstadoPedido.TRANSITO);
-
-                if (removido) {
-                    // El pedido fue exitosamente "adquirido" por este hilo Entregador.
-                    // Verificar con 95% de éxito
-                    boolean exitoso = random.nextInt(100) < PROBABILIDAD_EXITO;
-
-                    if (exitoso) {
-                        // Mover a ENTREGADO
-                        registro.agregarPedido(pedido, EstadoPedido.ENTREGADO);
-                        System.out.println(Thread.currentThread().getName() + " entregó exitosamente " + pedido);
-                    } else {
-                        // Mover a FALLIDO
-                        registro.agregarPedido(pedido, EstadoPedido.FALLIDO);
-                        System.out.println(Thread.currentThread().getName() + " falló la entrega de " + pedido);
-                    }
-                }
-
-            } catch (Exception e) {
-
-            }
+        if (pedido==null) {
+            return; //La lista está vacia, por lo que no se puede obtener un pedido aleatorio. O otro hilo se lo llevó
         }
+
+        // Intentar remover el pedido específico de TRANSITO.
+        boolean removido = registro.removerPedido(pedido, EstadoPedido.TRANSITO);
+
+        if (!removido) {
+            return; //Esto significa que otro hilo se "llevó" el pedido del hilo actual
+        }
+        // Bloquear el pedido específico para procesarlo
+
+        // El pedido fue adquirido por este hilo Entregador.
+        boolean exitoso = random.nextInt(100) < PROBABILIDAD_EXITO;
+
+        if (exitoso) {
+            // Mover a ENTREGADO
+            registro.agregarPedido(pedido, EstadoPedido.ENTREGADO);
+            System.out.println(Thread.currentThread().getName() + " entregó exitosamente " + pedido);
+        } else {
+            // Mover a FALLIDO
+            registro.agregarPedido(pedido, EstadoPedido.FALLIDO);
+            System.out.println(Thread.currentThread().getName() + " falló la entrega de " + pedido);
+        }
+
     }
 
 

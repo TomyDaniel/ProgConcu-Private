@@ -21,7 +21,7 @@ public class DespachadorPedido implements Runnable {
         Pedido pedido = registro.obtenerPedidoAleatorio(EstadoPedido.PREPARACION);
 
         if (pedido==null) {
-            return; //La lista está vacia, por lo que no se puede obtener un pedido aleatorio
+            return; //La lista está vacia, por lo que no se puede obtener un pedido aleatorio. O otro hilo se lo llevó
         }
 
         //remover el pedido específico de PREPARACION.
